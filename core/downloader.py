@@ -19,6 +19,7 @@ from __future__ import annotations
 import random
 import re
 import subprocess
+import threading
 import time
 import unicodedata
 import urllib.request
@@ -65,6 +66,7 @@ class DownloadManager:
     def __init__(self, output_dir: Optional[Path] = None, cookies: Optional[Path] = None):
         self.output_dir = Path(output_dir or config.OUTPUT_DIR)
         self._cancelled = False
+        self._archive_lock = threading.Lock()  # сериализуем запись архива id
         if cookies is not None:
             self.cookies: Optional[Path] = cookies
         elif config.have_cookies():
@@ -124,15 +126,21 @@ class DownloadManager:
         tracks: list[Track] = []
         entries = info.get("entries") if isinstance(info, dict) else None
         if entries is not None:
-            for i, e in enumerate(entries, 1):
+            seen: set[str] = set()
+            for e in entries:
                 if not e:
                     continue
+                vid = e.get("id", "")
+                if vid and vid in seen:   # один и тот же ролик в миксе — пропускаем
+                    continue
+                if vid:
+                    seen.add(vid)
                 tracks.append(Track(
                     title=e.get("title") or e.get("id") or "—",
-                    url=e.get("url") or e.get("webpage_url") or e.get("id", ""),
-                    id=e.get("id", ""),
+                    url=e.get("url") or e.get("webpage_url") or vid,
+                    id=vid,
                     duration=e.get("duration"),
-                    playlist_index=i,
+                    playlist_index=len(tracks) + 1,
                 ))
             return Playlist(tracks=tracks, title=info.get("title"),
                             thumbnail=_best_thumbnail_url(info))
@@ -221,6 +229,9 @@ class DownloadManager:
             track.status = "done"
             track.percent = 100.0
             _media_scan(track.filepath)  # чтобы Samsung Music увидел сразу
+            if config.SKIP_DUPLICATES and track.id:
+                with self._archive_lock:
+                    _append_done_id(folder, track.id)
             on_progress(track)
         except yt_dlp.utils.DownloadCancelled:
             track.status, track.error = "error", "отменено"
@@ -248,6 +259,20 @@ class DownloadManager:
                 except OSError:
                     pass
 
+        # пропускаем дубли: уже скачанные (архив папки) И повторы в самом списке
+        folder = self.output_dir / _safe(subdir) if subdir else self.output_dir
+        done_ids = _load_done_ids(folder) if config.SKIP_DUPLICATES else set()
+        pending: list[Track] = []
+        batch_seen: set[str] = set()
+        for t in tracks:
+            if config.SKIP_DUPLICATES and t.id and (t.id in done_ids or t.id in batch_seen):
+                t.status, t.percent = "done", 100.0
+                on_progress(t)
+                continue
+            if t.id:
+                batch_seen.add(t.id)
+            pending.append(t)
+
         workers = max(1, int(config.CONCURRENT_DOWNLOADS))
 
         # ── параллельно (как 4KVD): N потоков одновременно, без пауз ──
@@ -256,7 +281,7 @@ class DownloadManager:
             with ThreadPoolExecutor(max_workers=workers) as ex:
                 futures = [
                     ex.submit(self.download_track, t, on_progress, subdir, album)
-                    for t in tracks
+                    for t in pending
                 ]
                 for f in futures:
                     try:
@@ -266,11 +291,11 @@ class DownloadManager:
             return
 
         # ── последовательно: с человеческими паузами между треками ──
-        for i, t in enumerate(tracks):
+        for i, t in enumerate(pending):
             if self._cancelled:
                 break
             self.download_track(t, on_progress, subdir=subdir, album=album)
-            if i < len(tracks) - 1 and not self._cancelled:
+            if i < len(pending) - 1 and not self._cancelled:
                 pause = random.uniform(config.SLEEP_MIN, config.SLEEP_MAX)
                 if on_sleep:
                     on_sleep(pause)
@@ -325,6 +350,33 @@ def _save_thumbnail(url: Optional[str], dest: Path, max_h: int = 720) -> bool:
 
 
 # ──────────────────────────── утилиты ────────────────────────────
+def _archive_path(folder: Path) -> Path:
+    return folder / ".downloaded.txt"
+
+
+def _load_done_ids(folder: Path) -> set[str]:
+    """Множество уже скачанных video id из архива папки плейлиста."""
+    p = _archive_path(folder)
+    if not p.exists():
+        return set()
+    try:
+        return {x.strip() for x in p.read_text(encoding="utf-8").splitlines() if x.strip()}
+    except OSError:
+        return set()
+
+
+def _append_done_id(folder: Path, vid: str) -> None:
+    """Дописать video id в архив (вызывать под self._archive_lock)."""
+    if not vid:
+        return
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        with open(_archive_path(folder), "a", encoding="utf-8") as f:
+            f.write(vid + "\n")
+    except OSError:
+        pass
+
+
 def _media_scan(path: str) -> None:
     """Сказать Android проиндексировать файл → Samsung Music видит его сразу,
     без перезагрузки. Через termux-media-scan (legal API). Только на Termux,
