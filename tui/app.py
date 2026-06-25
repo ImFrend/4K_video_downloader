@@ -50,6 +50,9 @@ class TrackRow(Static):
     def __init__(self, track: Track) -> None:
         super().__init__()
         self.track = track
+        self._icon = None
+        self._bar = None
+        self._status = None
 
     def compose(self) -> ComposeResult:
         idx = f"{self.track.playlist_index:02d}  " if self.track.playlist_index else ""
@@ -59,21 +62,28 @@ class TrackRow(Static):
             yield ProgressBar(total=100, show_eta=False, classes="t-bar")
             yield Label("в очереди", classes="t-status")
 
-    def refresh_from(self, tr: Track) -> None:
-        self.query_one(".t-icon", Label).update(STATUS_ICON.get(tr.status, "•"))
-        self.query_one(ProgressBar).update(progress=tr.percent)
+    def on_mount(self) -> None:
+        # кэшируем виджеты, чтобы не дёргать query_one на каждое обновление прогресса
+        self._icon = self.query_one(".t-icon", Label)
+        self._bar = self.query_one(ProgressBar)
+        self._status = self.query_one(".t-status", Label)
 
-        status_label = self.query_one(".t-status", Label)
+    def refresh_from(self, tr: Track) -> None:
+        if self._bar is None:  # ещё не смонтирован
+            return
+        self._icon.update(STATUS_ICON.get(tr.status, "•"))
+        self._bar.update(progress=tr.percent)
+
         if tr.status == "downloading":
-            status_label.update(tr.speed or "…")
+            self._status.update(tr.speed or "…")
         elif tr.status == "converting":
-            status_label.update("конвертация")
+            self._status.update("конвертация")
         elif tr.status == "done":
-            status_label.update("готово")
+            self._status.update("готово")
         elif tr.status == "error":
-            status_label.update(tr.error or "ошибка")
+            self._status.update(tr.error or "ошибка")
         else:
-            status_label.update("в очереди")
+            self._status.update("в очереди")
 
         self.set_class(tr.status == "done", "done")
         self.set_class(tr.status == "error", "error")

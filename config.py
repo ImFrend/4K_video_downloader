@@ -25,7 +25,7 @@ IS_TERMUX = _is_termux()
 # ── Куда сохранять музыку ──
 if IS_TERMUX:
     # termux-setup-storage создаёт этот симлинк на общую память телефона
-    _music = Path.home() / "storage" / "music" / "TermuxYoutube"
+    _music = Path("/storage/emulated/0/Music")
     if not (Path.home() / "storage").exists():
         # storage ещё не настроен — падать не будем, кладём в домашнюю папку
         _music = Path.home() / "TermuxYoutube-Music"
@@ -74,8 +74,12 @@ AUDIO_PRIMARY = "m4a"      # AAC, без перекодирования когд
 AUDIO_FALLBACK = "mp3"     # универсальный fallback
 AUDIO_QUALITY = "0"        # 0 = максимум
 
-# Анти-бан: человеческий темп (Решение 6 — sleep оставляем, archive убрали).
-# Короткая пауза: своих ~25 треков качаем спокойно. 0/0 — отключить совсем.
+# Параллельные загрузки (как в 4KVD). 4 — оптимум скорость/риск.
+# 1 — последовательно (тогда работают паузы SLEEP_* ниже).
+CONCURRENT_DOWNLOADS = 4
+
+# Анти-бан: пауза между треками. Работает ТОЛЬКО при CONCURRENT_DOWNLOADS=1.
+# При параллели темп задаёт сам лимит потоков. 0/0 — отключить.
 SLEEP_MIN = 2              # сек, минимальная пауза между треками
 SLEEP_MAX = 5              # сек, максимальная
 

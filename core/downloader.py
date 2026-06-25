@@ -19,6 +19,7 @@ from __future__ import annotations
 import random
 import re
 import subprocess
+import time
 import unicodedata
 import urllib.request
 from dataclasses import dataclass, field
@@ -155,11 +156,18 @@ class DownloadManager:
         # раньше yt-dlp решал n-challenge дважды (probe + download).
         codec = config.AUDIO_PRIMARY
 
+        last_emit = [0.0]  # троттлинг UI: не чаще ~8 раз/сек на трек
+
         def hook(d: dict) -> None:
             if self._cancelled:
                 raise yt_dlp.utils.DownloadCancelled()
             st = d.get("status")
             if st == "downloading":
+                # yt-dlp дёргает hook сотни раз/сек → без троттлинга TUI «давится».
+                now = time.monotonic()
+                if now - last_emit[0] < 0.12:
+                    return
+                last_emit[0] = now
                 track.status = "downloading"
                 total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
                 done = d.get("downloaded_bytes") or 0
@@ -227,6 +235,24 @@ class DownloadManager:
             cover.parent.mkdir(parents=True, exist_ok=True)
             _save_thumbnail(cover_url, cover, config.THUMBNAIL_MAX_HEIGHT)
 
+        workers = max(1, int(config.CONCURRENT_DOWNLOADS))
+
+        # ── параллельно (как 4KVD): N потоков одновременно, без пауз ──
+        if workers > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                futures = [
+                    ex.submit(self.download_track, t, on_progress, subdir)
+                    for t in tracks
+                ]
+                for f in futures:
+                    try:
+                        f.result()
+                    except Exception:  # noqa: BLE001
+                        pass  # ошибка отдельного трека уже отражена в его статусе
+            return
+
+        # ── последовательно: с человеческими паузами между треками ──
         for i, t in enumerate(tracks):
             if self._cancelled:
                 break
