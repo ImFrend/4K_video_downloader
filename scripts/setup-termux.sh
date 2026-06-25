@@ -18,6 +18,12 @@ echo ">> [4/5] Python-зависимости ядра и TUI"
 pkg install -y python-pip || true
 pip install --upgrade yt-dlp textual rich
 
+# JS-движок: YouTube шифрует ссылки через JS (n-challenge). Без рантайма
+# yt-dlp выдаёт "Only images are available". deno — рекомендованный для EJS.
+echo ">> [4b/5] JS-движок для обхода n-challenge YouTube"
+pkg install -y deno || pkg install -y nodejs || \
+    echo "   !! поставь вручную: pkg install deno (или nodejs)"
+
 echo ">> [5/5] proot-distro + Debian (для браузер-слоя авторизации)"
 pkg install -y proot-distro
 proot-distro install debian || echo "   (debian уже установлен)"

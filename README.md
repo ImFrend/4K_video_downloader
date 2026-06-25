@@ -140,6 +140,10 @@ python main.py refresh         # обновить cookies
 - ⚠️ **Аккаунт**: cookies = доступ к аккаунту. Не коммить `cookies.txt` (он в `.gitignore`).
   Качаешь свои плейлисты — риск низкий; держи человеческий темп (паузы уже включены).
 - ⚠️ **Хрупкость**: YouTube меняет защиту → обновляй `pip install -U yt-dlp`.
+- ⚠️ **«Only images are available» / «Requested format is not available»**: YouTube
+  шифрует ссылки через JS (n-challenge). Нужен JS-рантайм (`pkg install deno`) — его
+  ставит `setup-termux.sh`. Скрипт-решатель EJS yt-dlp качает с GitHub (включено в коде
+  через `config.REMOTE_COMPONENTS`); первый запуск требует интернета для скачивания решателя.
 - ⚠️ **Chromium в proot** — самое ломкое звено; если падает, проверь `--no-sandbox` и `apt install chromium`.
 - ⚖️ Скачивание нарушает ToS YouTube; контент чужой — для личного использования.
 
