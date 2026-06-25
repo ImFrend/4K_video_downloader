@@ -62,12 +62,12 @@ def _grab(url: str) -> int:
         elif tr.status == "error":
             print(f"  ✗ {tr.title[:40]}: {tr.error}")
 
-    tracks, title = dm.probe(url)
-    print(f"Найдено: {len(tracks)} трек(ов){' — ' + title if title else ''}")
-    dm.download_all(tracks, on_progress, subdir=title,
+    pl = dm.probe(url)
+    print(f"Найдено: {len(pl.tracks)} трек(ов){' — ' + pl.title if pl.title else ''}")
+    dm.download_all(pl.tracks, on_progress, subdir=pl.title, cover_url=pl.thumbnail,
                     on_sleep=lambda s: print(f"  пауза {s:.0f}s…", end="\r"))
-    done = sum(1 for t in tracks if t.status == "done")
-    print(f"\nИтог: {done}/{len(tracks)} готово")
+    done = sum(1 for t in pl.tracks if t.status == "done")
+    print(f"\nИтог: {done}/{len(pl.tracks)} готово")
     return 0
 
 

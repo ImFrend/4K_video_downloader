@@ -140,23 +140,24 @@ class TermuxYoutube(App):
         self.call_from_thread(self._set_status, f"cookies: {ck_msg}", True)
 
         try:
-            tracks, title = self._manager.probe(url)
+            pl = self._manager.probe(url)
         except Exception as ex:  # noqa: BLE001
             self.call_from_thread(self._fail, str(ex))
             return
-        if not tracks:
+        if not pl.tracks:
             self.call_from_thread(self._fail, "ничего не найдено")
             return
 
-        self.call_from_thread(self._build_rows, tracks, title)
+        self.call_from_thread(self._build_rows, pl.tracks, pl.title)
         self._manager.download_all(
-            tracks,
+            pl.tracks,
             on_progress=lambda tr: self.call_from_thread(self._on_progress, tr),
-            subdir=title,
+            subdir=pl.title,
+            cover_url=pl.thumbnail,
             on_sleep=lambda s: self.call_from_thread(
                 self._set_status, f"Пауза {s:.0f}s (анти-бан)…", True),
         )
-        self.call_from_thread(self._finish, tracks)
+        self.call_from_thread(self._finish, pl.tracks)
 
     # ── UI-поток ──
     def _build_rows(self, tracks: list[Track], title: Optional[str]) -> None:

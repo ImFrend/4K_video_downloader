@@ -6,13 +6,22 @@
   • если у видео есть AAC-дорожка (m4a) → сохраняем как .m4a БЕЗ перекодирования (stream copy)
   • иначе (opus и т.п.) → конвертируем в .mp3
 
+Обложки:
+  • значок каждого видео → <трек>.jpg (масштаб до 720px, без увеличения)
+  • обложка плейлиста    → folder.jpg в папке плейлиста (видят музыкальные плееры)
+  • плюс обложка встраивается в сам аудиофайл (cover art)
+
+Имена файлов — строго UTF-8 (NFC-нормализация), без ASCII-кастрации.
 Анти-бан (Решение 6): случайная пауза между треками. --download-archive НЕ используем.
 """
 from __future__ import annotations
 
 import random
 import re
-from dataclasses import dataclass
+import subprocess
+import unicodedata
+import urllib.request
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -21,7 +30,7 @@ import yt_dlp
 import config
 
 
-# ──────────────────────────── модель трека ────────────────────────────
+# ──────────────────────────── модели ────────────────────────────
 @dataclass
 class Track:
     title: str
@@ -39,8 +48,15 @@ class Track:
     error: str = ""
 
 
+@dataclass
+class Playlist:
+    tracks: list[Track] = field(default_factory=list)
+    title: Optional[str] = None
+    thumbnail: Optional[str] = None     # URL обложки плейлиста
+
+
 ProgressCb = Callable[[Track], None]
-SleepCb = Callable[[float], None]  # уведомить UI о паузе между треками (необязательно)
+SleepCb = Callable[[float], None]
 
 
 # ──────────────────────────── менеджер ────────────────────────────
@@ -58,7 +74,6 @@ class DownloadManager:
     def cancel(self) -> None:
         self._cancelled = True
 
-    # ---- общие опции ----
     def _base_opts(self) -> dict:
         opts = {"quiet": True, "no_warnings": True, "noprogress": True}
         if self.cookies:
@@ -67,17 +82,19 @@ class DownloadManager:
 
     @staticmethod
     def _resolve_url(track: Track) -> str:
-        """Строим надёжный URL: из id — канонический watch-URL, иначе берём как есть."""
         if track.id and re.fullmatch(r"[\w-]{11}", track.id):
             return f"https://www.youtube.com/watch?v={track.id}"
         return track.url
 
-    # ---- 1. разбор плейлиста/трека (лёгкий, минимум запросов) ----
-    def probe(self, url: str) -> list[Track]:
+    # ---- 1. разбор плейлиста/трека (лёгкий) ----
+    def probe(self, url: str) -> Playlist:
         opts = self._base_opts() | {
             "skip_download": True,
             "extract_flat": "in_playlist",
         }
+        if config.MAX_PLAYLIST_ITEMS:
+            opts["playlistend"] = config.MAX_PLAYLIST_ITEMS
+
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -94,21 +111,23 @@ class DownloadManager:
                     duration=e.get("duration"),
                     playlist_index=i,
                 ))
-        else:
-            tracks.append(Track(
-                title=info.get("title", "—"),
-                url=info.get("webpage_url", url),
-                id=info.get("id", ""),
-                duration=info.get("duration"),
-            ))
-        return tracks, (info.get("title") if entries is not None else None)
+            return Playlist(tracks=tracks, title=info.get("title"),
+                            thumbnail=_best_thumbnail_url(info))
+
+        tracks.append(Track(
+            title=info.get("title", "—"),
+            url=info.get("webpage_url", url),
+            id=info.get("id", ""),
+            duration=info.get("duration"),
+        ))
+        return Playlist(tracks=tracks, title=None,
+                        thumbnail=_best_thumbnail_url(info))
 
     # ---- решаем кодек: AAC доступен → m4a (копия), иначе mp3 ----
     @staticmethod
     def _pick_codec(info: dict) -> str:
         for f in info.get("formats", []):
-            is_audio_only = f.get("vcodec") in (None, "none")
-            if not is_audio_only:
+            if f.get("vcodec") not in (None, "none"):
                 continue
             ac = (f.get("acodec") or "").lower()
             if f.get("ext") == "m4a" or "mp4a" in ac or "aac" in ac:
@@ -120,7 +139,6 @@ class DownloadManager:
                        subdir: Optional[str] = None) -> None:
         dl_url = self._resolve_url(track)
 
-        # 2a. полный probe — узнать кодек (без скачивания медиа)
         try:
             with yt_dlp.YoutubeDL(self._base_opts() | {"skip_download": True}) as ydl:
                 info = ydl.extract_info(dl_url, download=False)
@@ -132,7 +150,6 @@ class DownloadManager:
         codec = self._pick_codec(info)
         track.duration = track.duration or info.get("duration")
 
-        # 2b. progress hook → обновляем модель → дёргаем UI
         def hook(d: dict) -> None:
             if self._cancelled:
                 raise yt_dlp.utils.DownloadCancelled()
@@ -151,7 +168,6 @@ class DownloadManager:
                 track.speed = ""
                 on_progress(track)
 
-        # 2c. куда писать (плейлист → подпапка)
         folder = self.output_dir / _safe(subdir) if subdir else self.output_dir
         folder.mkdir(parents=True, exist_ok=True)
         if track.playlist_index:
@@ -178,26 +194,36 @@ class DownloadManager:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 res = ydl.extract_info(dl_url, download=True)
             track.filepath = _final_path(res)
+            # значок видео отдельным файлом (масштаб до 720px)
+            if config.SAVE_THUMBNAILS and track.filepath:
+                _save_thumbnail(_best_thumbnail_url(info),
+                                Path(track.filepath).with_suffix(".jpg"),
+                                config.THUMBNAIL_MAX_HEIGHT)
             track.status = "done"
             track.percent = 100.0
             on_progress(track)
         except yt_dlp.utils.DownloadCancelled:
-            track.status = "error"
-            track.error = "отменено"
+            track.status, track.error = "error", "отменено"
             on_progress(track)
         except Exception as ex:  # noqa: BLE001
             track.status, track.error = "error", _short_err(ex)
             on_progress(track)
 
-    # ---- 3. скачать список с человеческим темпом (Решение 6) ----
+    # ---- 3. скачать список с человеческим темпом ----
     def download_all(self, tracks: list[Track], on_progress: ProgressCb,
                      subdir: Optional[str] = None,
-                     on_sleep: Optional[SleepCb] = None) -> None:
+                     on_sleep: Optional[SleepCb] = None,
+                     cover_url: Optional[str] = None) -> None:
+        # обложка плейлиста → folder.jpg (один раз, до треков)
+        if config.SAVE_THUMBNAILS and subdir and cover_url:
+            cover = self.output_dir / _safe(subdir) / "folder.jpg"
+            cover.parent.mkdir(parents=True, exist_ok=True)
+            _save_thumbnail(cover_url, cover, config.THUMBNAIL_MAX_HEIGHT)
+
         for i, t in enumerate(tracks):
             if self._cancelled:
                 break
             self.download_track(t, on_progress, subdir=subdir)
-            # пауза между треками — кроме последнего
             if i < len(tracks) - 1 and not self._cancelled:
                 pause = random.uniform(config.SLEEP_MIN, config.SLEEP_MAX)
                 if on_sleep:
@@ -205,10 +231,60 @@ class DownloadManager:
                 _interruptible_sleep(pause, lambda: self._cancelled)
 
 
+# ──────────────────────────── обложки ────────────────────────────
+def _best_thumbnail_url(info: dict) -> Optional[str]:
+    """Берём самую большую доступную обложку (downscale до 720 сделаем позже)."""
+    best_url, best_score = None, -1
+    for t in info.get("thumbnails") or []:
+        url = t.get("url")
+        if not url:
+            continue
+        score = t.get("height") or t.get("width") or t.get("preference") or 0
+        if score > best_score:
+            best_url, best_score = url, score
+    return best_url or info.get("thumbnail")
+
+
+def _save_thumbnail(url: Optional[str], dest: Path, max_h: int = 720) -> bool:
+    """Скачать обложку и масштабировать до высоты max_h (без увеличения). → JPG."""
+    if not url:
+        return False
+    tmp = dest.with_name(dest.stem + ".orig")
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            tmp.write_bytes(r.read())
+    except Exception:  # noqa: BLE001
+        return False
+
+    try:
+        # scale=-2:'min(max_h,ih)' — высота <= max_h, ширина кратна 2, без upscale
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", str(tmp),
+             "-vf", f"scale=-2:'min({max_h},ih)'", str(dest)],
+            check=False,
+        )
+        ok = dest.exists() and dest.stat().st_size > 0
+    except FileNotFoundError:
+        # ffmpeg нет — сохраним хотя бы оригинал
+        tmp.replace(dest)
+        ok = dest.exists()
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+    return ok
+
+
 # ──────────────────────────── утилиты ────────────────────────────
 def _safe(name: str) -> str:
-    """Безопасное имя папки."""
-    return re.sub(r'[<>:"/\\|?*]', "_", name).strip() or "playlist"
+    """Безопасное имя папки: строго UTF-8 (NFC), без запрещённых символов."""
+    name = unicodedata.normalize("NFC", str(name))
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)
+    name = name.strip(" ._")  # убрать ведущие/замыкающие точки/подчёркивания/пробелы
+    return name or "playlist"
 
 
 def _fmt_speed(bps: Optional[float]) -> str:
@@ -229,8 +305,7 @@ def _fmt_eta(sec: Optional[float]) -> str:
 
 
 def _short_err(ex: Exception) -> str:
-    msg = str(ex)
-    msg = re.sub(r"\x1b\[[0-9;]*m", "", msg)  # убрать ANSI-цвета yt-dlp
+    msg = re.sub(r"\x1b\[[0-9;]*m", "", str(ex))  # убрать ANSI-цвета yt-dlp
     return (msg[:120] + "…") if len(msg) > 120 else msg
 
 
@@ -246,11 +321,9 @@ def _final_path(info: dict) -> str:
 
 def _interruptible_sleep(seconds: float, is_cancelled: Callable[[], bool]) -> None:
     import time
-    end = seconds
-    step = 0.2
-    waited = 0.0
-    while waited < end:
+    waited, step = 0.0, 0.2
+    while waited < seconds:
         if is_cancelled():
             return
-        time.sleep(min(step, end - waited))
+        time.sleep(min(step, seconds - waited))
         waited += step

@@ -68,6 +68,16 @@ SLEEP_MAX = 15             # сек, максимальная
 # Авто-refresh: если cookies старше этого — обновить (в Debian) / предупредить (в Termux).
 COOKIES_MAX_AGE_HOURS = 12
 
+# ── Обложки (thumbnails) ──
+# Сохранять значок каждого видео и обложку плейлиста (folder.jpg).
+SAVE_THUMBNAILS = True
+# Целевая высота обложки в пикселях. Если исходник меньше — НЕ увеличиваем (берём как есть).
+THUMBNAIL_MAX_HEIGHT = 720
+
+# ── Лимит плейлиста ──
+# Сколько записей плейлиста тянуть. None = все (YouTube отдаёт до ~5000).
+MAX_PLAYLIST_ITEMS: int | None = None
+
 # Шаблон имени файла: Папка плейлиста / NN - Название
 OUTPUT_TEMPLATE = "%(playlist_title)s/%(playlist_index)02d - %(title)s.%(ext)s"
 # Для одиночного трека (без плейлиста)
