@@ -165,7 +165,7 @@ class DownloadManager:
             if st == "downloading":
                 # yt-dlp дёргает hook сотни раз/сек → без троттлинга TUI «давится».
                 now = time.monotonic()
-                if now - last_emit[0] < 0.12:
+                if now - last_emit[0] < config.PROGRESS_THROTTLE_SEC:
                     return
                 last_emit[0] = now
                 track.status = "downloading"
