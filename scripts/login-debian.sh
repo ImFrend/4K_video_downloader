@@ -22,6 +22,17 @@ fi
 echo ">> DISPLAY=$DISPLAY"
 echo ">> Chromium=$PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"
 
+# оконный менеджер — БЕЗ него окно Playwright не отображается в Termux:X11
+if command -v matchbox-window-manager >/dev/null 2>&1; then
+    if ! pgrep -x matchbox-window > /dev/null 2>&1; then
+        echo ">> Запускаю оконный менеджер (matchbox-window-manager)"
+        DISPLAY="$DISPLAY" matchbox-window-manager -use_titlebar no >/dev/null 2>&1 &
+        sleep 1
+    fi
+else
+    echo "   (нет matchbox-window-manager — поставь: apt install -y matchbox-window-manager)"
+fi
+
 # экранная клавиатура в X11 — для ввода логина/пароля тапами
 if command -v matchbox-keyboard >/dev/null 2>&1; then
     echo ">> Запускаю экранную клавиатуру (matchbox-keyboard)"
