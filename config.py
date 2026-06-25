@@ -78,6 +78,16 @@ THUMBNAIL_MAX_HEIGHT = 720
 # Сколько записей плейлиста тянуть. None = все (YouTube отдаёт до ~5000).
 MAX_PLAYLIST_ITEMS: int | None = None
 
+# ── Обход гейта форматов YouTube (PO-token) ──
+# С web-клиентом YouTube требует PO-token → "Requested format is not available".
+# Пробуем клиенты плеера, которым он не нужен (по порядку). Требует свежий yt-dlp.
+# Пусто [] — вернуть поведение по умолчанию.
+YOUTUBE_PLAYER_CLIENTS = ["tv", "ios", "web_safari"]
+
+# ── Снимок динамического микса (My Mix / radio: list=RD...) ──
+# Чтобы не виснуть на бесконечном радио — берём только первые N треков.
+MIX_SNAPSHOT_LIMIT = 50
+
 # Шаблон имени файла: Папка плейлиста / NN - Название
 OUTPUT_TEMPLATE = "%(playlist_title)s/%(playlist_index)02d - %(title)s.%(ext)s"
 # Для одиночного трека (без плейлиста)
