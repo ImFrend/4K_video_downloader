@@ -19,15 +19,28 @@ from textual.widgets import (
 import config
 from core.downloader import DownloadManager, Track
 
-# Иконки статусов. Безопасный Unicode (рендерится и без Nerd Font),
-# с Nerd Font на телефоне можно заменить на ⬇       .
-STATUS_ICON = {
+# Иконки статусов. Два набора:
+#   • Nerd Font — красивые глифы (нужен установленный Nerd Font в терминале)
+#   • Plain     — безопасный Unicode-fallback (рендерится везде)
+# Переключение: config.NERD_FONT (env TY_NERD_FONT=0 чтобы выключить).
+ICONS_NERD = {
+    "queued": "",       #   часы (ожидание)
+    "downloading": "",  #   стрелка вниз (загрузка)
+    "converting": "",   #   шестерёнка (обработка)
+    "done": "",         #   галочка
+    "error": "",        #   крест в круге
+}
+ICONS_PLAIN = {
     "queued": "•",
     "downloading": "⬇",
     "converting": "♪",
     "done": "✓",
     "error": "✗",
 }
+STATUS_ICON = ICONS_NERD if config.NERD_FONT else ICONS_PLAIN
+
+# Глиф для кнопки запуска
+GO_ICON = "" if config.NERD_FONT else "▸"   #  стрелка-в-круге
 
 
 class TrackRow(Static):
@@ -85,7 +98,7 @@ class TermuxYoutube(App):
         with Vertical(id="main"):
             with Horizontal(id="input-row"):
                 yield Input(placeholder="Ссылка на плейлист или видео…", id="url")
-                yield Button("▸", id="go", variant="primary")
+                yield Button(GO_ICON, id="go", variant="primary")
             yield Static(self._cookie_line(), id="cookie-status")
             yield Static("", id="status")
             yield VerticalScroll(id="tracks")
@@ -97,9 +110,11 @@ class TermuxYoutube(App):
         cookie.set_class(not config.have_cookies(), "warn")
 
     def _cookie_line(self) -> str:
+        ok_icon = "" if config.NERD_FONT else "✓"     #  check-circle
+        warn_icon = "" if config.NERD_FONT else "⚠"   #  warning
         if config.have_cookies():
-            return "✓  вход активен — приватные плейлисты доступны"
-        return "⚠  без cookies — приватные плейлисты не видны (нужен вход)"
+            return f"{ok_icon}  вход активен — приватные плейлисты доступны"
+        return f"{warn_icon}  без cookies — приватные плейлисты не видны (нужен вход)"
 
     # ── запуск ──
     @on(Button.Pressed, "#go")
