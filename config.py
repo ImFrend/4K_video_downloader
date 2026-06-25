@@ -90,6 +90,11 @@ SLEEP_MAX = 5              # сек, максимальная
 # Авто-refresh: если cookies старше этого — обновить (в Debian) / предупредить (в Termux).
 COOKIES_MAX_AGE_HOURS = 12
 
+# ── Индексация медиатеки Android ──
+# После скачивания Samsung Music не видит файлы до перезагрузки. Дёргаем
+# termux-media-scan (нужен пакет termux-api + APK Termux:API). Только на Termux.
+MEDIA_SCAN = True
+
 # ── Обложки (thumbnails) ──
 # Сохранять значок каждого видео и обложку плейлиста (folder.jpg).
 SAVE_THUMBNAILS = True
