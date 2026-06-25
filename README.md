@@ -104,22 +104,32 @@ bash scripts/install-nerdfont.sh
 export TY_NERD_FONT=0
 ```
 
-### 3. Браузер-слой (для приватных плейлистов)
-Войти в Debian **с bind-монтированием папки проекта** (чтобы cookies.txt был общий):
+### 3. Браузер-слой (для приватных плейлистов) — встроенный вход «как в 4KVD»
+
+**3a. Поставить Debian + Playwright + Chromium** (один раз):
 ```bash
-proot-distro login debian --bind ~/TermuxYoutube:/root/TermuxYoutube
-cd /root/TermuxYoutube
+proot-distro login debian --shared-tmp \
+  --bind ~/4K_video_downloader:/root/4K_video_downloader
+cd /root/4K_video_downloader
 bash scripts/setup-debian.sh
+exit                         # вернуться в Termux
 ```
 
-### 4. Первый вход (1 раз, нужно видимое окно)
-Видимый Chromium на телефоне даёт **Termux-X11**. Установи termux-x11, затем внутри Debian:
+**3b. Запустить X11-сервер** (в нативном Termux; нужно APK «Termux:X11»):
 ```bash
-python3 -m auth.login      # вход руками (пароль + 2FA), потом Enter в терминале
+bash scripts/start-x11.sh    # затем ОТКРОЙ приложение Termux:X11
 ```
-Дальше сессия обновляется без окна:
+
+**3c. Видимый вход** (в другой сессии Termux → Debian):
 ```bash
-python3 -m auth.refresh    # headless, перед скачиванием или по расписанию
+proot-distro login debian --shared-tmp \
+  --bind ~/4K_video_downloader:/root/4K_video_downloader
+cd /root/4K_video_downloader
+bash scripts/login-debian.sh   # откроется Chromium → войди руками (пароль+2FA) → Enter
+```
+cookies сохранятся в профиль и в `cookies.txt`. Дальше — обновление без окна:
+```bash
+python3 -m auth.refresh        # headless, перед скачиванием (или само из main.py)
 ```
 
 ---

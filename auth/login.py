@@ -13,6 +13,7 @@ Termux: запускать внутри proot-distro/Debian с поднятым 
 """
 from __future__ import annotations
 
+import os
 import sys
 
 import config
@@ -27,6 +28,12 @@ def main() -> int:
     except ImportError:
         print("Playwright не установлен. Внутри Debian:  pip install playwright")
         return 1
+
+    if not os.environ.get("DISPLAY"):
+        print("⚠  DISPLAY не задан — видимому браузеру нужен X11.")
+        print("   1) В Termux:  bash scripts/start-x11.sh  (и открой приложение Termux:X11)")
+        print("   2) В Debian:  export DISPLAY=:0  (или запусти через scripts/login-debian.sh)")
+        print("   Пробую запуститься всё равно…\n")
 
     config.BROWSER_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
