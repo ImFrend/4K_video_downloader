@@ -21,7 +21,15 @@ fi
 
 echo ">> DISPLAY=$DISPLAY"
 echo ">> Chromium=$PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"
-echo ">> Открываю видимый браузер для входа…"
 
+# экранная клавиатура в X11 — для ввода логина/пароля тапами
+if command -v matchbox-keyboard >/dev/null 2>&1; then
+    echo ">> Запускаю экранную клавиатуру (matchbox-keyboard)"
+    DISPLAY="$DISPLAY" matchbox-keyboard >/dev/null 2>&1 &
+else
+    echo "   (нет matchbox-keyboard — поставь: apt install -y matchbox-keyboard)"
+fi
+
+echo ">> Открываю видимый браузер для входа…"
 cd "$(dirname "$0")/.."
 python3 -m auth.login
