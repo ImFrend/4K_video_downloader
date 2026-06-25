@@ -145,32 +145,15 @@ class DownloadManager:
         return Playlist(tracks=tracks, title=None,
                         thumbnail=_best_thumbnail_url(info))
 
-    # ---- решаем кодек: AAC доступен → m4a (копия), иначе mp3 ----
-    @staticmethod
-    def _pick_codec(info: dict) -> str:
-        for f in info.get("formats", []):
-            if f.get("vcodec") not in (None, "none"):
-                continue
-            ac = (f.get("acodec") or "").lower()
-            if f.get("ext") == "m4a" or "mp4a" in ac or "aac" in ac:
-                return config.AUDIO_PRIMARY  # m4a
-        return config.AUDIO_FALLBACK         # mp3
-
     # ---- 2. скачать один трек ----
     def download_track(self, track: Track, on_progress: ProgressCb,
                        subdir: Optional[str] = None) -> None:
         dl_url = self._resolve_url(track)
 
-        try:
-            with yt_dlp.YoutubeDL(self._base_opts() | {"skip_download": True}) as ydl:
-                info = ydl.extract_info(dl_url, download=False)
-        except Exception as ex:  # noqa: BLE001
-            track.status, track.error = "error", _short_err(ex)
-            on_progress(track)
-            return
-
-        codec = self._pick_codec(info)
-        track.duration = track.duration or info.get("duration")
+        # AAC-first: формат предпочитает m4a (140) → копия без перекодирования.
+        # ОДИН запрос на трек (без отдельного probe) — главное ускорение:
+        # раньше yt-dlp решал n-challenge дважды (probe + download).
+        codec = config.AUDIO_PRIMARY
 
         def hook(d: dict) -> None:
             if self._cancelled:
@@ -216,9 +199,11 @@ class DownloadManager:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 res = ydl.extract_info(dl_url, download=True)
             track.filepath = _final_path(res)
+            if isinstance(res, dict):
+                track.duration = track.duration or res.get("duration")
             # значок видео отдельным файлом (масштаб до 720px)
             if config.SAVE_THUMBNAILS and track.filepath:
-                _save_thumbnail(_best_thumbnail_url(info),
+                _save_thumbnail(_best_thumbnail_url(res),
                                 Path(track.filepath).with_suffix(".jpg"),
                                 config.THUMBNAIL_MAX_HEIGHT)
             track.status = "done"
