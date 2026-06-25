@@ -148,7 +148,8 @@ class DownloadManager:
 
     # ---- 2. скачать один трек ----
     def download_track(self, track: Track, on_progress: ProgressCb,
-                       subdir: Optional[str] = None) -> None:
+                       subdir: Optional[str] = None,
+                       album: Optional[str] = None) -> None:
         dl_url = self._resolve_url(track)
 
         # AAC-first: формат предпочитает m4a (140) → копия без перекодирования.
@@ -202,6 +203,9 @@ class DownloadManager:
                 {"key": "EmbedThumbnail", "already_have_thumbnail": False},
             ],
         }
+        # тег альбома = название плейлиста → плеер собирает треки в «My Mix»
+        if album:
+            opts["postprocessor_args"] = {"metadata": ["-metadata", f"album={album}"]}
 
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -229,11 +233,19 @@ class DownloadManager:
                      subdir: Optional[str] = None,
                      on_sleep: Optional[SleepCb] = None,
                      cover_url: Optional[str] = None) -> None:
-        # обложка плейлиста → folder.jpg (один раз, до треков)
+        # обложка плейлиста → folder.jpg + cover.jpg (один раз, до треков).
+        # album = название плейлиста: треки соберутся в один альбом «My Mix».
+        album = subdir
         if config.SAVE_THUMBNAILS and subdir and cover_url:
-            cover = self.output_dir / _safe(subdir) / "folder.jpg"
-            cover.parent.mkdir(parents=True, exist_ok=True)
-            _save_thumbnail(cover_url, cover, config.THUMBNAIL_MAX_HEIGHT)
+            folder_dir = self.output_dir / _safe(subdir)
+            folder_dir.mkdir(parents=True, exist_ok=True)
+            cover = folder_dir / "folder.jpg"
+            if _save_thumbnail(cover_url, cover, config.THUMBNAIL_MAX_HEIGHT):
+                import shutil
+                try:  # дубль под имя, которое любят другие плееры
+                    shutil.copyfile(cover, folder_dir / "cover.jpg")
+                except OSError:
+                    pass
 
         workers = max(1, int(config.CONCURRENT_DOWNLOADS))
 
@@ -242,7 +254,7 @@ class DownloadManager:
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=workers) as ex:
                 futures = [
-                    ex.submit(self.download_track, t, on_progress, subdir)
+                    ex.submit(self.download_track, t, on_progress, subdir, album)
                     for t in tracks
                 ]
                 for f in futures:
@@ -256,7 +268,7 @@ class DownloadManager:
         for i, t in enumerate(tracks):
             if self._cancelled:
                 break
-            self.download_track(t, on_progress, subdir=subdir)
+            self.download_track(t, on_progress, subdir=subdir, album=album)
             if i < len(tracks) - 1 and not self._cancelled:
                 pause = random.uniform(config.SLEEP_MIN, config.SLEEP_MAX)
                 if on_sleep:
