@@ -220,6 +220,7 @@ class DownloadManager:
                                 config.THUMBNAIL_MAX_HEIGHT)
             track.status = "done"
             track.percent = 100.0
+            _media_scan(track.filepath)  # чтобы Samsung Music увидел сразу
             on_progress(track)
         except yt_dlp.utils.DownloadCancelled:
             track.status, track.error = "error", "отменено"
@@ -324,6 +325,19 @@ def _save_thumbnail(url: Optional[str], dest: Path, max_h: int = 720) -> bool:
 
 
 # ──────────────────────────── утилиты ────────────────────────────
+def _media_scan(path: str) -> None:
+    """Сказать Android проиндексировать файл → Samsung Music видит его сразу,
+    без перезагрузки. Через termux-media-scan (legal API). Только на Termux,
+    тихо пропускаем, если termux-api не установлен."""
+    if not (config.MEDIA_SCAN and config.IS_TERMUX) or not path:
+        return
+    try:
+        subprocess.run(["termux-media-scan", path],
+                       capture_output=True, timeout=20)
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        pass  # нет termux-api — не критично, индексация будет позже
+
+
 def _safe(name: str) -> str:
     """Безопасное имя папки: строго UTF-8 (NFC), без запрещённых символов."""
     name = unicodedata.normalize("NFC", str(name))

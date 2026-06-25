@@ -6,8 +6,10 @@ set -e
 echo ">> [1/5] Обновление пакетов Termux"
 pkg update -y && pkg upgrade -y
 
-echo ">> [2/5] Базовые пакеты (python, ffmpeg, git)"
-pkg install -y python ffmpeg git
+echo ">> [2/5] Базовые пакеты (python, ffmpeg, git, termux-api)"
+# termux-api нужен для termux-media-scan (Samsung Music видит треки сразу).
+# Дополнительно поставь APK "Termux:API" из F-Droid/того же источника, что Termux.
+pkg install -y python ffmpeg git termux-api
 
 echo ">> [3/5] Доступ к памяти телефона (для папки с музыкой)"
 termux-setup-storage || echo "   (пропущено — дай разрешение вручную при запросе)"
