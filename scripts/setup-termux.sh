@@ -13,7 +13,9 @@ echo ">> [3/5] Доступ к памяти телефона (для папки 
 termux-setup-storage || echo "   (пропущено — дай разрешение вручную при запросе)"
 
 echo ">> [4/5] Python-зависимости ядра и TUI"
-pip install --upgrade pip
+# ВАЖНО: на Termux НЕЛЬЗЯ обновлять сам pip (сломает пакет python-pip).
+# Обновляем pip только через системный пакет, не через pip.
+pkg install -y python-pip || true
 pip install --upgrade yt-dlp textual rich
 
 echo ">> [5/5] proot-distro + Debian (для браузер-слоя авторизации)"
