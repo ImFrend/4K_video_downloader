@@ -40,7 +40,7 @@ def main() -> int:
     launch_kwargs = dict(
         user_data_dir=str(config.BROWSER_PROFILE_DIR),
         headless=False,
-        args=["--no-sandbox", "--disable-dev-shm-usage"],
+        args=list(config.CHROMIUM_ARGS),   # софт-рендер для Termux-X11
         viewport={"width": 412, "height": 915},  # пропорции телефона
     )
     if config.CHROMIUM_EXECUTABLE:
