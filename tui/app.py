@@ -18,6 +18,7 @@ from textual.widgets import (
 
 import config
 from core.downloader import DownloadManager, Track
+from auth.refresh import ensure_fresh_cookies
 
 # Иконки статусов. Два набора:
 #   • Nerd Font — красивые глифы (нужен установленный Nerd Font в терминале)
@@ -133,6 +134,11 @@ class TermuxYoutube(App):
     # ── воркер: probe + загрузка (в отдельном потоке) ──
     @work(thread=True, exclusive=True)
     def _run(self, url: str) -> None:
+        # (c) авто-refresh cookies перед скачиванием — best-effort, не падает
+        self.call_from_thread(self._set_status, "Проверяю cookies…", True)
+        _, ck_msg = ensure_fresh_cookies()
+        self.call_from_thread(self._set_status, f"cookies: {ck_msg}", True)
+
         try:
             tracks, title = self._manager.probe(url)
         except Exception as ex:  # noqa: BLE001

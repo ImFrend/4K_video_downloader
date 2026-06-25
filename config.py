@@ -65,6 +65,9 @@ AUDIO_QUALITY = "0"        # 0 = максимум
 SLEEP_MIN = 5              # сек, минимальная пауза между треками
 SLEEP_MAX = 15             # сек, максимальная
 
+# Авто-refresh: если cookies старше этого — обновить (в Debian) / предупредить (в Termux).
+COOKIES_MAX_AGE_HOURS = 12
+
 # Шаблон имени файла: Папка плейлиста / NN - Название
 OUTPUT_TEMPLATE = "%(playlist_title)s/%(playlist_index)02d - %(title)s.%(ext)s"
 # Для одиночного трека (без плейлиста)

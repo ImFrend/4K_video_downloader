@@ -46,6 +46,11 @@ def main() -> int:
 def _grab(url: str) -> int:
     """CLI-загрузка без интерфейса — удобно для отладки на телефоне."""
     from core.downloader import DownloadManager
+    from auth.refresh import ensure_fresh_cookies
+
+    # (c) авто-refresh cookies перед скачиванием
+    _, ck_msg = ensure_fresh_cookies()
+    print(f"cookies: {ck_msg}")
 
     dm = DownloadManager()
 
