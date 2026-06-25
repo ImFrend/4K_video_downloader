@@ -47,12 +47,11 @@ COOKIES_FILE = ROOT / "cookies.txt"
 CHROMIUM_ARGS = [
     "--no-sandbox",
     "--disable-dev-shm-usage",
-    "--use-gl=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-features=VizDisplayCompositor",
+    "--disable-gpu",              # без GPU-процесса → нет краша GL-инициализации
+    "--disable-quic",            # proot режет UDP → форсим TCP-TLS (лечит SSL reset)
     "--no-first-run",
     "--no-default-browser-check",
-    # "--disable-gpu",            # включи, если экран остаётся чёрным
+    "--test-type",               # без назойливых инфобаров
 ]
 
 # Путь к СИСТЕМНОМУ Chromium (ARM-сборка из apt внутри Debian).
