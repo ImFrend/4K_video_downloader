@@ -75,9 +75,19 @@ class DownloadManager:
         self._cancelled = True
 
     def _base_opts(self) -> dict:
-        opts = {"quiet": True, "no_warnings": True, "noprogress": True}
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "noprogress": True,
+            "socket_timeout": 30,   # не висеть вечно на сетевом запросе
+            "retries": 3,
+        }
         if self.cookies:
             opts["cookiefile"] = str(self.cookies)
+        if config.YOUTUBE_PLAYER_CLIENTS:
+            opts["extractor_args"] = {
+                "youtube": {"player_client": list(config.YOUTUBE_PLAYER_CLIENTS)}
+            }
         return opts
 
     @staticmethod
@@ -86,14 +96,23 @@ class DownloadManager:
             return f"https://www.youtube.com/watch?v={track.id}"
         return track.url
 
+    @staticmethod
+    def _is_mix(url: str) -> bool:
+        """My Mix / radio: list=RD... — динамическое бесконечное радио."""
+        return bool(re.search(r"[?&]list=RD", url))
+
     # ---- 1. разбор плейлиста/трека (лёгкий) ----
     def probe(self, url: str) -> Playlist:
         opts = self._base_opts() | {
             "skip_download": True,
             "extract_flat": "in_playlist",
         }
-        if config.MAX_PLAYLIST_ITEMS:
-            opts["playlistend"] = config.MAX_PLAYLIST_ITEMS
+        # лимит: для микса — жёсткий снимок, чтобы не виснуть на бесконечном радио
+        limit = config.MAX_PLAYLIST_ITEMS
+        if self._is_mix(url):
+            limit = min(limit or config.MIX_SNAPSHOT_LIMIT, config.MIX_SNAPSHOT_LIMIT)
+        if limit:
+            opts["playlistend"] = limit
 
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
