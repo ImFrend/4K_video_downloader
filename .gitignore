@@ -1,0 +1,30 @@
+# ─── Секреты: НИКОГДА не коммитить ───
+cookies.txt
+state.json
+browser-profile/
+*.cookies
+auth/profile/
+*.session
+
+# Загрузки
+downloads/
+Music/
+*.m4a
+*.mp3
+*.opus
+*.webm
+*.part
+*.ytdl
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+.python-version
+
+# Прочее
+done.txt
+*.log
+.DS_Store
