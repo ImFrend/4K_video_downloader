@@ -58,7 +58,7 @@ def _refresh_once() -> Tuple[str, str]:
     launch_kwargs = dict(
         user_data_dir=str(config.BROWSER_PROFILE_DIR),
         headless=True,
-        args=["--no-sandbox", "--disable-dev-shm-usage"],
+        args=list(config.CHROMIUM_ARGS),
     )
     if config.CHROMIUM_EXECUTABLE:
         launch_kwargs["executable_path"] = config.CHROMIUM_EXECUTABLE

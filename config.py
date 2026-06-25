@@ -41,6 +41,20 @@ BROWSER_PROFILE_DIR = ROOT / "auth" / "profile"
 # Экспортированные cookies в формате Netscape — их ест yt-dlp.
 COOKIES_FILE = ROOT / "cookies.txt"
 
+# Флаги Chromium для proot/Termux-X11.
+# Чёрный экран в Termux:X11 = аппаратный GPU недоступен. Форсим софт-рендер
+# (swiftshader). Если всё ещё чёрный — попробуй раскомментировать --disable-gpu.
+CHROMIUM_ARGS = [
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--use-gl=swiftshader",
+    "--enable-unsafe-swiftshader",
+    "--disable-features=VizDisplayCompositor",
+    "--no-first-run",
+    "--no-default-browser-check",
+    # "--disable-gpu",            # включи, если экран остаётся чёрным
+]
+
 # Путь к СИСТЕМНОМУ Chromium (ARM-сборка из apt внутри Debian).
 # Нужен, чтобы Playwright НЕ качал свой x86-бинарь, который не запустится на телефоне.
 # Ставится setup-debian.sh; пусто на десктопе — Playwright возьмёт свой браузер.
