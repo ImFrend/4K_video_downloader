@@ -88,6 +88,9 @@ class DownloadManager:
             opts["extractor_args"] = {
                 "youtube": {"player_client": list(config.YOUTUBE_PLAYER_CLIENTS)}
             }
+        if config.REMOTE_COMPONENTS:
+            # разрешить yt-dlp скачать EJS-решатель JS-challenge (n-sig)
+            opts["remote_components"] = list(config.REMOTE_COMPONENTS)
         return opts
 
     @staticmethod

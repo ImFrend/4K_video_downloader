@@ -88,6 +88,13 @@ YOUTUBE_PLAYER_CLIENTS = ["tv", "ios", "web_safari"]
 # Чтобы не виснуть на бесконечном радио — берём только первые N треков.
 MIX_SNAPSHOT_LIMIT = 50
 
+# ── EJS: решатель JS-challenge YouTube ──
+# YouTube шифрует ссылки на потоки через JS (n-challenge / signature). Нужен:
+#   1) JS-рантайм (deno или nodejs) — ставится в системе;
+#   2) скрипт-решатель EJS, который yt-dlp качает с GitHub (кешируется 1 раз).
+# Без этого yt-dlp видит "Only images are available". Пусто [] — отключить.
+REMOTE_COMPONENTS = ["ejs:github"]
+
 # Шаблон имени файла: Папка плейлиста / NN - Название
 OUTPUT_TEMPLATE = "%(playlist_title)s/%(playlist_index)02d - %(title)s.%(ext)s"
 # Для одиночного трека (без плейлиста)
