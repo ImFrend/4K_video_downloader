@@ -70,7 +70,7 @@ NERD_FONT = os.environ.get("TY_NERD_FONT", "1").lower() not in ("0", "false", "n
 
 # ── Параметры загрузки (Решение 2 + Решение 6) ──
 # Приоритет AAC (m4a); если дорожка не в AAC — перекодируем в mp3.
-AUDIO_PRIMARY = "m4a"      # AAC, без перекодирования когда возможно
+AUDIO_PRIMARY = "mp3"      # AAC, без перекодирования когда возможно
 AUDIO_FALLBACK = "mp3"     # универсальный fallback
 AUDIO_QUALITY = "0"        # 0 = максимум
 
