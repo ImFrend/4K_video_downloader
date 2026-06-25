@@ -28,7 +28,7 @@ if IS_TERMUX:
     _music = Path("/storage/emulated/0/Music")
     if not (Path.home() / "storage").exists():
         # storage ещё не настроен — падать не будем, кладём в домашнюю папку
-        _music = Path.home() / "TermuxYoutube-Music"
+        _music = Path("/storage/emulated/0/Music")
     OUTPUT_DIR = _music
 else:
     OUTPUT_DIR = ROOT / "downloads"
