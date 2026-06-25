@@ -64,7 +64,8 @@ TermuxYoutube/
 │   └── cookies_export.py    Playwright cookies → Netscape (cookies.txt)
 ├── scripts/
 │   ├── setup-termux.sh      нативная установка (ядро+TUI)
-│   └── setup-debian.sh      браузер-слой в proot/Debian
+│   ├── setup-debian.sh      браузер-слой в proot/Debian
+│   └── install-nerdfont.sh  Nerd Font для иконок TUI
 ├── requirements.txt
 └── .gitignore               cookies.txt / профиль / музыка — НЕ коммитятся
 ```
@@ -87,6 +88,16 @@ bash scripts/setup-termux.sh
 После этого **публичное** уже качается:
 ```bash
 python main.py
+```
+
+### 2b. Иконки TUI (Nerd Font) — опционально, но красиво
+Для глифов (загрузка/галочка/шестерёнка) поставь Nerd Font в Termux:
+```bash
+bash scripts/install-nerdfont.sh
+```
+Не хочешь шрифт — выключи иконки, будет безопасный Unicode-fallback:
+```bash
+export TY_NERD_FONT=0
 ```
 
 ### 3. Браузер-слой (для приватных плейлистов)

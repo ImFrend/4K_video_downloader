@@ -50,6 +50,11 @@ CHROMIUM_EXECUTABLE = (
     or ""
 )
 
+# ── Внешний вид ──
+# Nerd Font иконки в TUI. Требуют установленного Nerd Font в терминале.
+# Выключить (безопасный Unicode-fallback):  TY_NERD_FONT=0
+NERD_FONT = os.environ.get("TY_NERD_FONT", "1").lower() not in ("0", "false", "no")
+
 # ── Параметры загрузки (Решение 2 + Решение 6) ──
 # Приоритет AAC (m4a); если дорожка не в AAC — перекодируем в mp3.
 AUDIO_PRIMARY = "m4a"      # AAC, без перекодирования когда возможно
