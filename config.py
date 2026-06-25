@@ -86,8 +86,8 @@ MAX_PLAYLIST_ITEMS: int | None = None
 YOUTUBE_PLAYER_CLIENTS = ["tv", "ios", "web_safari"]
 
 # ── Снимок динамического микса (My Mix / radio: list=RD...) ──
-# Чтобы не виснуть на бесконечном радио — берём только первые N треков.
-MIX_SNAPSHOT_LIMIT = 50
+# Жёсткий лимит: берём ровно первые N треков (как 4KVD), не уходя в радио.
+MIX_SNAPSHOT_LIMIT = 25
 
 # ── EJS: решатель JS-challenge YouTube ──
 # YouTube шифрует ссылки на потоки через JS (n-challenge / signature). Нужен:
