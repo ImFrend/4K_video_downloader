@@ -229,11 +229,10 @@ class DownloadManager:
             track.filepath = _final_path(res)
             if isinstance(res, dict):
                 track.duration = track.duration or res.get("duration")
-            # значок видео отдельным файлом (масштаб до 720px)
-            if config.SAVE_THUMBNAILS and track.filepath:
-                _save_thumbnail(_best_thumbnail_url(res),
-                                Path(track.filepath).with_suffix(".jpg"),
-                                config.THUMBNAIL_MAX_HEIGHT)
+            # обложка УЖЕ вшита в аудио; убираем сырые картинки yt-dlp,
+            # отдельный значок оставляем только если SAVE_THUMBNAILS
+            if track.filepath:
+                _cleanup_thumbnails(Path(track.filepath), res)
             track.status = "done"
             track.percent = 100.0
             _media_scan(track.filepath)  # чтобы Samsung Music увидел сразу
@@ -386,6 +385,22 @@ def _append_done_id(folder: Path, vid: str) -> None:
             f.write(vid + "\n")
     except OSError:
         pass
+
+
+def _cleanup_thumbnails(audio: Path, res: dict) -> None:
+    """Обложка уже вшита в аудио. Убираем сырые картинки yt-dlp (.webp/.png/.jpg),
+    чтобы не мусорить в папке/галерее. Если SAVE_THUMBNAILS — оставляем один
+    красивый значок 720px (.jpg), иначе — только вшитую обложку."""
+    for ext in (".webp", ".png", ".jpeg", ".jpg"):
+        f = audio.with_suffix(ext)
+        if f.exists():
+            try:
+                f.unlink()
+            except OSError:
+                pass
+    if config.SAVE_THUMBNAILS:
+        url = _best_thumbnail_url(res) if isinstance(res, dict) else None
+        _save_thumbnail(url, audio.with_suffix(".jpg"), config.THUMBNAIL_MAX_HEIGHT)
 
 
 def _media_scan(path: str) -> None:
