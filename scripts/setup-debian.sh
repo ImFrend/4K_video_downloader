@@ -10,7 +10,8 @@ set -e
 
 echo ">> [1/3] Пакеты Debian (chromium ARM, ffmpeg, python)"
 apt update && apt upgrade -y
-apt install -y chromium ffmpeg python3 python3-pip fonts-liberation ca-certificates
+apt install -y chromium ffmpeg python3 python3-pip fonts-liberation ca-certificates \
+    matchbox-keyboard
 
 echo ">> [2/3] Playwright + yt-dlp"
 pip3 install --break-system-packages --upgrade playwright yt-dlp || \
