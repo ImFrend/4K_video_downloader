@@ -157,7 +157,8 @@ class DownloadManager:
     # ---- 2. скачать один трек ----
     def download_track(self, track: Track, on_progress: ProgressCb,
                        subdir: Optional[str] = None,
-                       album: Optional[str] = None) -> None:
+                       album: Optional[str] = None,
+                       track_total: Optional[int] = None) -> None:
         dl_url = self._resolve_url(track)
 
         # AAC-first: формат предпочитает m4a (140) → копия без перекодирования.
@@ -211,9 +212,16 @@ class DownloadManager:
                 {"key": "EmbedThumbnail", "already_have_thumbnail": False},
             ],
         }
-        # тег альбома = название плейлиста → плеер собирает треки в «My Mix»
+        # метаданные: album (группировка) + track=N/всего (Samsung Music
+        # сортирует по этому тегу, а НЕ по имени файла → правильный порядок 1..25)
+        meta_args: list[str] = []
         if album:
-            opts["postprocessor_args"] = {"metadata": ["-metadata", f"album={album}"]}
+            meta_args += ["-metadata", f"album={album}"]
+        if track.playlist_index:
+            tn = f"{track.playlist_index}/{track_total}" if track_total else str(track.playlist_index)
+            meta_args += ["-metadata", f"track={tn}"]
+        if meta_args:
+            opts["postprocessor_args"] = {"metadata": meta_args}
 
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -273,6 +281,7 @@ class DownloadManager:
                 batch_seen.add(t.id)
             pending.append(t)
 
+        total = len(tracks)  # для тега track=N/всего → правильный порядок в плеере
         workers = max(1, int(config.CONCURRENT_DOWNLOADS))
 
         # ── параллельно (как 4KVD): N потоков одновременно, без пауз ──
@@ -280,7 +289,7 @@ class DownloadManager:
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=workers) as ex:
                 futures = [
-                    ex.submit(self.download_track, t, on_progress, subdir, album)
+                    ex.submit(self.download_track, t, on_progress, subdir, album, total)
                     for t in pending
                 ]
                 for f in futures:
@@ -288,18 +297,20 @@ class DownloadManager:
                         f.result()
                     except Exception:  # noqa: BLE001
                         pass  # ошибка отдельного трека уже отражена в его статусе
+            _media_scan_dir(folder)  # финальный рекурсивный скан папки
             return
 
         # ── последовательно: с человеческими паузами между треками ──
         for i, t in enumerate(pending):
             if self._cancelled:
                 break
-            self.download_track(t, on_progress, subdir=subdir, album=album)
+            self.download_track(t, on_progress, subdir=subdir, album=album, track_total=total)
             if i < len(pending) - 1 and not self._cancelled:
                 pause = random.uniform(config.SLEEP_MIN, config.SLEEP_MAX)
                 if on_sleep:
                     on_sleep(pause)
                 _interruptible_sleep(pause, lambda: self._cancelled)
+        _media_scan_dir(folder)  # финальный рекурсивный скан папки
 
 
 # ──────────────────────────── обложки ────────────────────────────
@@ -388,6 +399,17 @@ def _media_scan(path: str) -> None:
                        capture_output=True, timeout=20)
     except (FileNotFoundError, OSError, subprocess.SubprocessError):
         pass  # нет termux-api — не критично, индексация будет позже
+
+
+def _media_scan_dir(folder: Path) -> None:
+    """Рекурсивно проиндексировать всю папку плейлиста (надёжная страховка)."""
+    if not (config.MEDIA_SCAN and config.IS_TERMUX):
+        return
+    try:
+        subprocess.run(["termux-media-scan", "-r", str(folder)],
+                       capture_output=True, timeout=60)
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        pass
 
 
 def _safe(name: str) -> str:
