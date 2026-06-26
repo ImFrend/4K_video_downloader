@@ -103,7 +103,7 @@ MEDIA_SCAN = True
 
 # ── Обложки (thumbnails) ──
 # Сохранять значок каждого видео и обложку плейлиста (folder.jpg).
-SAVE_THUMBNAILS = True
+SAVE_THUMBNAILS = False
 # Целевая высота обложки в пикселях. Если исходник меньше — НЕ увеличиваем (берём как есть).
 THUMBNAIL_MAX_HEIGHT = 720
 
