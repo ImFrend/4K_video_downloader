@@ -105,19 +105,51 @@ body.detail .view-detail { transform: translateX(0); }
 
 /* segmented control (iOS) */
 .seg {
-  display: flex; gap: 3px; padding: 3px;
+  position: relative; isolation: isolate;
+  display: flex; gap: 0; padding: 3px;
   background: var(--card-2); border-radius: 12px;
+  touch-action: none;            /* drag по сегментам не скроллит страницу */
 }
 .seg button {
-  flex: 1; border: 0; background: transparent; color: var(--tx);
+  position: relative; z-index: 1;
+  flex: 1; border: 0; background: transparent; color: var(--tx-2);
   font-size: 14px; font-weight: 600; padding: 9px 4px; border-radius: 9px;
-  cursor: pointer; transition: transform .12s var(--ease), background .25s var(--ease);
+  cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color .25s var(--ease);
 }
-.seg button:active { transform: scale(.93); }
-.seg button.on {
+.seg button.on { color: #fff; font-weight: 700; }
+
+/* сдвижной thumb (как UISegmentedControl): едет пружиной и тянется пальцем */
+.seg-thumb {
+  position: absolute; top: 3px; left: 0; z-index: 0;
+  height: calc(100% - 6px); width: 0; border-radius: 9px;
   background: linear-gradient(180deg, #3a3a3e, #2a2a2e);
   box-shadow: 0 1px 4px rgba(0,0,0,.5), inset 0 .5px 0 rgba(255,255,255,.08);
+  transition: transform .4s var(--spring), width .4s var(--spring), background .25s var(--ease);
+  will-change: transform, width;
 }
+.seg.dragging .seg-thumb { transition: transform .12s var(--ease), width .12s var(--ease); }
+.seg-thumb[data-v="max"] {
+  background: linear-gradient(180deg, #114263, #0c2c47);
+  box-shadow: 0 1px 6px rgba(10,132,255,.4), inset 0 0 0 1px rgba(10,132,255,.55);
+}
+.seg-thumb[data-v="standard"] {
+  background: linear-gradient(180deg, #124a26, #0d3219);
+  box-shadow: 0 1px 6px rgba(48,209,88,.32), inset 0 0 0 1px rgba(48,209,88,.5);
+}
+.seg-thumb[data-v="economy"] {
+  background: linear-gradient(180deg, #3a3a3e, #232327);
+  box-shadow: 0 1px 4px rgba(0,0,0,.5), inset 0 0 0 1px rgba(142,142,147,.4);
+}
+
+/* качество ② — цветные точки уровня */
+.seg-q .qd {
+  width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px;
+}
+.q-max .qd { background: var(--accent); }
+.q-std .qd { background: var(--green); }
+.q-eco .qd { background: var(--tx-2); }
 
 /* slider */
 input[type=range] {

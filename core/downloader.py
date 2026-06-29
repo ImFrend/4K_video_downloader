@@ -200,7 +200,7 @@ class DownloadManager:
         outtmpl = str(folder / name)
 
         opts = self._base_opts() | {
-            "format": "bestaudio[ext=m4a]/bestaudio/best",
+            "format": config.AUDIO_FORMAT,
             "outtmpl": outtmpl,
             "progress_hooks": [hook],
             "writethumbnail": True,

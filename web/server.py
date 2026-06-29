@@ -73,7 +73,7 @@ class JobManager:
         self.dm = DownloadManager()
         self.cookies = {"status": "", "msg": ""}
         default_streams = config.WEB_PLAYLIST_CONCURRENCY * config.WEB_TRACKS_PER_PLAYLIST
-        self.settings = {"platform": "android", "quality": "best", "streams": default_streams}
+        self.settings = {"platform": "android", "quality": "max", "streams": default_streams}
         self._refresh_cookie_status()
 
     # ---- служебное ----
@@ -156,14 +156,13 @@ class JobManager:
 
     def _run_queue(self, jobs: list[Job]) -> None:
         s = dict(self.settings)
-        # гибрид ① + качество ②: платформа задаёт кодек, 256k форсит mp3 (совместимость).
+        # ② качество = какой поток брать с YouTube; ① платформа = в какой кодек класть.
         # Меняем глобальный config в рантайме — download_track читает его при вызове,
         # сигнатуры проверенного движка не трогаем.
-        if s["quality"] == "256k":
-            config.AUDIO_PRIMARY, config.AUDIO_QUALITY = "mp3", "256K"
-        else:
-            config.AUDIO_PRIMARY = config.WEB_PLATFORM_CODEC.get(s["platform"], "m4a")
-            config.AUDIO_QUALITY = "0"
+        qd = config.WEB_QUALITY.get(s["quality"], config.WEB_QUALITY["max"])
+        config.AUDIO_FORMAT = qd["format"]
+        config.AUDIO_PRIMARY = config.WEB_PLATFORM_CODEC.get(s["platform"], "m4a")
+        config.AUDIO_QUALITY = "0"
 
         streams = int(s["streams"])
         tracks_per = max(1, config.WEB_TRACKS_PER_PLAYLIST)
