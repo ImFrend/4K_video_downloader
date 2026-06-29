@@ -206,7 +206,8 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.18); }
   padding: 12px; margin-bottom: 10px; cursor: pointer;
   transform-origin: center;
   animation: pop .42s var(--spring) both;
-  transition: transform .14s var(--spring), background .2s;
+  transition: transform .14s var(--spring), background .2s,
+              border-color .5s var(--ease), box-shadow .5s var(--ease);
 }
 .card:active { transform: scale(.98); background: var(--card-2); }
 @keyframes pop { from { opacity: 0; transform: translateY(10px) scale(.96); } }
