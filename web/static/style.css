@@ -236,6 +236,8 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.18); }
 .trk-ic.dl   { color: var(--accent); }
 
 /* ── sheet (вход) ── */
+/* display:flex перебивает атрибут [hidden] → явно прячем, когда hidden стоит */
+.sheet-wrap[hidden] { display: none; }
 .sheet-wrap { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; }
 .sheet-bg { position: absolute; inset: 0; background: rgba(0,0,0,.55); animation: fade .25s var(--ease); }
 @keyframes fade { from { opacity: 0; } }
