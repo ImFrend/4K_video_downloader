@@ -71,7 +71,9 @@ function paintSubs() {
     QUALITY_SUB[document.querySelector("#segQuality .on").dataset.v];
 }
 
-// iOS UISegmentedControl: один сдвижной thumb, поддержка ТАПа и DRAG (тянуть палец).
+// iOS UISegmentedControl: сдвижной thumb тянется ПРЯМО за пальцем, с резиной
+// (rubber-band) на краях, и пружиной встаёт на выбранный сегмент при отпускании.
+const RUBBER = 0.28;     // жёсткость резины за краем (меньше = упруже сопротивляется)
 function makeSegmented(seg, onChange) {
   const btns = [...seg.querySelectorAll("button")];
   const thumb = document.createElement("span");
@@ -79,51 +81,63 @@ function makeSegmented(seg, onChange) {
   seg.insertBefore(thumb, seg.firstChild);
   let active = Math.max(0, btns.findIndex((b) => b.classList.contains("on")));
 
-  const place = (animate = true) => {
+  const setSel = (i) => {
+    if (i === active) return;
+    active = i;
+    thumb.dataset.v = btns[i].dataset.v;
+    btns.forEach((x, k) => x.classList.toggle("on", k === i));
+    paintSubs();
+  };
+  // встать ровно на выбранный сегмент (пружиной, если animate)
+  const snap = (animate = true) => {
     const b = btns[active];
     if (!animate) thumb.style.transition = "none";
     thumb.style.transform = `translateX(${b.offsetLeft}px)`;
     thumb.style.width = b.offsetWidth + "px";
     thumb.dataset.v = b.dataset.v;
     if (!animate) { void thumb.offsetWidth; thumb.style.transition = ""; }
-    btns.forEach((x, i) => x.classList.toggle("on", i === active));
+    btns.forEach((x, k) => x.classList.toggle("on", k === active));
   };
-  const segAt = (clientX) => {
-    const x = clientX - seg.getBoundingClientRect().left;
+  const nearest = (px) => {
     let best = 0, bd = Infinity;
-    btns.forEach((b, i) => {
-      const c = b.offsetLeft + b.offsetWidth / 2, d = Math.abs(c - x);
-      if (d < bd) { bd = d; best = i; }
-    });
+    btns.forEach((b, i) => { const c = b.offsetLeft + b.offsetWidth / 2, d = Math.abs(c - px); if (d < bd) { bd = d; best = i; } });
     return best;
+  };
+  // thumb едет за пальцем; за краями — резина
+  const follow = (clientX) => {
+    const x = clientX - seg.getBoundingClientRect().left;
+    const w = btns[0].offsetWidth;
+    const minL = btns[0].offsetLeft, maxL = btns[btns.length - 1].offsetLeft;
+    let left = x - w / 2;
+    if (left < minL) left = minL + (left - minL) * RUBBER;       // резина слева
+    else if (left > maxL) left = maxL + (left - maxL) * RUBBER;  // резина справа
+    thumb.style.transform = `translateX(${left}px)`;
+    thumb.style.width = w + "px";
+    setSel(nearest(x));
   };
 
   let dragging = false;
   seg.addEventListener("pointerdown", (e) => {
     dragging = true; seg.classList.add("dragging");
     try { seg.setPointerCapture(e.pointerId); } catch (_) {}
-    const i = segAt(e.clientX);
-    if (i !== active) { active = i; place(); paintSubs(); }
+    follow(e.clientX);
   });
-  seg.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
-    const i = segAt(e.clientX);
-    if (i !== active) { active = i; place(); paintSubs(); }
-  });
+  seg.addEventListener("pointermove", (e) => { if (dragging) follow(e.clientX); });
   const end = () => {
     if (!dragging) return;
     dragging = false; seg.classList.remove("dragging");
+    snap();                       // резина отыгрывает назад, thumb пружиной на сегмент
     onChange();
     api("/api/settings", readSettings());
   };
   seg.addEventListener("pointerup", end);
   seg.addEventListener("pointercancel", end);
 
-  place(false);
+  snap(false);
   return {
-    setValue(v) { const i = btns.findIndex((b) => b.dataset.v === v); if (i >= 0 && i !== active) { active = i; place(); } },
+    setValue(v) { const i = btns.findIndex((b) => b.dataset.v === v); if (i >= 0) { active = i; snap(); } },
     getValue() { return btns[active].dataset.v; },
-    reflow() { place(false); },
+    reflow() { snap(false); },
   };
 }
 const segP = makeSegmented(E("segPlatform"), paintSubs);
