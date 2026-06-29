@@ -164,9 +164,14 @@ class JobManager:
         config.AUDIO_PRIMARY = config.WEB_PLATFORM_CODEC.get(s["platform"], "m4a")
         config.AUDIO_QUALITY = "0"
 
+        # адаптивный делёж бюджета потоков по реально добавленным миксам:
+        #   1 микс  → 1 плейлист × min(4, streams)  (один My Mix = до 4 потоков)
+        #   3 микса → 3 плейлиста × 2  = 6
         streams = int(s["streams"])
-        tracks_per = max(1, config.WEB_TRACKS_PER_PLAYLIST)
-        pl_conc = max(1, round(streams / tracks_per))   # 6→3 плейлиста, 4→2, 8→4
+        nactive = max(1, len(jobs))
+        pl_conc = max(1, min(nactive, round(streams / config.WEB_TRACKS_PER_PLAYLIST)))
+        # floor → суммарно потоков не больше слайдера (он = потолок риска)
+        tracks_per = max(1, min(config.WEB_MAX_TRACKS_PER_PLAYLIST, streams // pl_conc))
 
         # cookies: тихий авто-refresh по времени (без кнопки), один раз перед стартом
         try:
