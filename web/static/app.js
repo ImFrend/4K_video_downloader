@@ -45,6 +45,25 @@ const TRK_IC = {
   queued: "·", downloading: "▸", converting: "⟳", done: "✓", error: "✕",
 };
 
+// рамка карточки «созревает» по мере % (синий → зелёный) + растущее свечение
+function tintCard(el, ratio, status) {
+  if (status === "done") {
+    el.style.borderColor = "var(--green)";
+    el.style.boxShadow = "0 0 0 .5px var(--green), 0 6px 22px rgba(48,209,88,.20)";
+  } else if (status === "error") {
+    el.style.borderColor = "var(--red)";
+    el.style.boxShadow = "0 0 0 .5px rgba(255,69,58,.6)";
+  } else if (status === "downloading") {
+    const hue = 210 - 68 * ratio;            // 210° синий → 142° зелёный
+    const col = `hsl(${hue} 90% 56%)`;
+    el.style.borderColor = col;
+    el.style.boxShadow = `0 0 0 .5px ${col}, 0 6px 24px hsla(${hue} 90% 50% / ${0.12 + ratio * 0.26})`;
+  } else {                                    // ready / queued / probing
+    el.style.borderColor = "";
+    el.style.boxShadow = "";
+  }
+}
+
 // ─────────── settings UI ───────────
 function readSettings() {
   return {
@@ -199,9 +218,11 @@ function updateCard(n, p) {
   r.status.textContent = st;
   r.status.className = cls;
 
+  const ratio = p.total ? p.done / p.total : 0;
   const showBar = p.total > 0 && p.status !== "probing" && p.status !== "error";
   r.mini.style.display = showBar ? "" : "none";
-  r.bar.style.transform = `scaleX(${p.total ? p.done / p.total : 0})`;
+  r.bar.style.transform = `scaleX(${ratio})`;
+  tintCard(n.el, ratio, p.status);
 
   // убрать можно, пока не идёт общая загрузка
   r.rm.style.display = state && state.running ? "none" : "";
