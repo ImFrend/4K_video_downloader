@@ -74,6 +74,10 @@ AUDIO_PRIMARY = "m4a"      # AAC, без перекодирования когд
 AUDIO_FALLBACK = "mp3"     # универсальный fallback
 AUDIO_QUALITY = "0"        # 0 = максимум
 
+# Селектор потока yt-dlp (какой формат качать с YouTube). Дефолт = прежнее
+# зашитое поведение → TUI/CLI НЕ меняются. Web-слой переопределяет по качеству.
+AUDIO_FORMAT = "bestaudio[ext=m4a]/bestaudio/best"
+
 # Параллельные загрузки (как в 4KVD). 4 — оптимум скорость/риск.
 # 1 — последовательно (тогда работают паузы SLEEP_* ниже).
 CONCURRENT_DOWNLOADS = 4
@@ -148,6 +152,17 @@ PLAYLIST_PAUSE_MAX = 12        # …до переиспользования сл
 # Гибрид-блок ①: платформа → предпочитаемый кодек. Android/iOS/Linux = m4a
 # (копия AAC, без даунгрейда). Windows = mp3 для макс. совместимости старых плееров.
 WEB_PLATFORM_CODEC = {"android": "m4a", "ios": "m4a", "linux": "m4a", "windows": "mp3"}
+
+# Качество ② → какой реальный поток брать с YouTube. Три уровня (цвета в UI:
+# max=синий, standard=зелёный, economy=серый). Кодек/контейнер задаёт платформа ①.
+WEB_QUALITY = {
+    "max":      {"format": "bestaudio/best",
+                 "sub": "Opus ~160 kbps — максимум, что отдаёт YouTube"},
+    "standard": {"format": "bestaudio[ext=m4a]/bestaudio",
+                 "sub": "AAC 128 kbps — универсальный, играет везде"},
+    "economy":  {"format": "worstaudio[abr>=32]/worstaudio/bestaudio",
+                 "sub": "~50–64 kbps — мелкие файлы, экономия места"},
+}
 
 # Шаблон имени файла: Папка плейлиста / NN - Название
 OUTPUT_TEMPLATE = "%(playlist_title)s/%(playlist_index)02d - %(title)s.%(ext)s"

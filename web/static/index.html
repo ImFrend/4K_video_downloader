@@ -38,14 +38,15 @@
         <p class="sub" id="platformSub">формат: без ограничений (Best)</p>
       </div>
 
-      <!-- ② качество -->
+      <!-- ② качество (реальные потоки YouTube, цвет по качеству) -->
       <div class="block">
         <div class="block-h">Качество</div>
-        <div class="seg" id="segQuality">
-          <button data-v="best" class="on">Best</button>
-          <button data-v="256k">256 kbps</button>
+        <div class="seg seg-q" id="segQuality">
+          <button data-v="max" class="on q-max"><i class="qd"></i>Максимум</button>
+          <button data-v="standard" class="q-std"><i class="qd"></i>Стандарт</button>
+          <button data-v="economy" class="q-eco"><i class="qd"></i>Эконом</button>
         </div>
-        <p class="sub" id="qualitySub">оригинал, без перекодирования</p>
+        <p class="sub" id="qualitySub">Opus ~160 kbps — максимум, что отдаёт YouTube</p>
       </div>
 
       <!-- ③ параллелизм -->

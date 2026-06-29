@@ -26,8 +26,9 @@ const PLATFORM_SUB = {
   linux: "формат: m4a / opus",
 };
 const QUALITY_SUB = {
-  best: "оригинал, без перекодирования",
-  "256k": "256 kbps mp3 — для совместимости, не выше",
+  max: "Opus ~160 kbps — максимум, что отдаёт YouTube",
+  standard: "AAC 128 kbps — универсальный, играет везде",
+  economy: "~50–64 kbps — мелкие файлы, экономия места",
 };
 function plPlur(n) {
   const a = n % 10, b = n % 100;
@@ -70,18 +71,64 @@ function paintSubs() {
     QUALITY_SUB[document.querySelector("#segQuality .on").dataset.v];
 }
 
-function bindSeg(segId, onChange) {
-  E(segId).addEventListener("click", (e) => {
-    const b = e.target.closest("button");
-    if (!b) return;
-    E(segId).querySelectorAll("button").forEach((x) => x.classList.remove("on"));
-    b.classList.add("on");
+// iOS UISegmentedControl: один сдвижной thumb, поддержка ТАПа и DRAG (тянуть палец).
+function makeSegmented(seg, onChange) {
+  const btns = [...seg.querySelectorAll("button")];
+  const thumb = document.createElement("span");
+  thumb.className = "seg-thumb";
+  seg.insertBefore(thumb, seg.firstChild);
+  let active = Math.max(0, btns.findIndex((b) => b.classList.contains("on")));
+
+  const place = (animate = true) => {
+    const b = btns[active];
+    if (!animate) thumb.style.transition = "none";
+    thumb.style.transform = `translateX(${b.offsetLeft}px)`;
+    thumb.style.width = b.offsetWidth + "px";
+    thumb.dataset.v = b.dataset.v;
+    if (!animate) { void thumb.offsetWidth; thumb.style.transition = ""; }
+    btns.forEach((x, i) => x.classList.toggle("on", i === active));
+  };
+  const segAt = (clientX) => {
+    const x = clientX - seg.getBoundingClientRect().left;
+    let best = 0, bd = Infinity;
+    btns.forEach((b, i) => {
+      const c = b.offsetLeft + b.offsetWidth / 2, d = Math.abs(c - x);
+      if (d < bd) { bd = d; best = i; }
+    });
+    return best;
+  };
+
+  let dragging = false;
+  seg.addEventListener("pointerdown", (e) => {
+    dragging = true; seg.classList.add("dragging");
+    try { seg.setPointerCapture(e.pointerId); } catch (_) {}
+    const i = segAt(e.clientX);
+    if (i !== active) { active = i; place(); paintSubs(); }
+  });
+  seg.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const i = segAt(e.clientX);
+    if (i !== active) { active = i; place(); paintSubs(); }
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false; seg.classList.remove("dragging");
     onChange();
     api("/api/settings", readSettings());
-  });
+  };
+  seg.addEventListener("pointerup", end);
+  seg.addEventListener("pointercancel", end);
+
+  place(false);
+  return {
+    setValue(v) { const i = btns.findIndex((b) => b.dataset.v === v); if (i >= 0 && i !== active) { active = i; place(); } },
+    getValue() { return btns[active].dataset.v; },
+    reflow() { place(false); },
+  };
 }
-bindSeg("segPlatform", paintSubs);
-bindSeg("segQuality", paintSubs);
+const segP = makeSegmented(E("segPlatform"), paintSubs);
+const segQ = makeSegmented(E("segQuality"), paintSubs);
+window.addEventListener("resize", () => { segP.reflow(); segQ.reflow(); });
 
 let sTimer = null;
 const streams = E("streams");
@@ -288,10 +335,11 @@ function hint(msg, err) {
 function applyState() {
   if (!inited) {
     const s = state.settings || {};
-    if (s.platform) document.querySelectorAll("#segPlatform button").forEach((b) => b.classList.toggle("on", b.dataset.v === s.platform));
-    if (s.quality) document.querySelectorAll("#segQuality button").forEach((b) => b.classList.toggle("on", b.dataset.v === s.quality));
+    if (s.platform) segP.setValue(s.platform);
+    if (s.quality) segQ.setValue(s.quality);
     if (s.streams) E("streams").value = s.streams;
     paintStreams(); paintSubs();
+    requestAnimationFrame(() => { segP.reflow(); segQ.reflow(); });   // точная посадка thumb
     inited = true;
   } else if (!sliderDrag && state.settings && state.settings.streams && +E("streams").value !== state.settings.streams) {
     E("streams").value = state.settings.streams; paintStreams();
