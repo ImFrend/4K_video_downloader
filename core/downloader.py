@@ -251,7 +251,12 @@ class DownloadManager:
     def download_all(self, tracks: list[Track], on_progress: ProgressCb,
                      subdir: Optional[str] = None,
                      on_sleep: Optional[SleepCb] = None,
-                     cover_url: Optional[str] = None) -> None:
+                     cover_url: Optional[str] = None,
+                     workers: Optional[int] = None,
+                     start_jitter: float = 0.0) -> None:
+        # workers/start_jitter — расширение для web-слоя (несколько плейлистов разом).
+        # По умолчанию (TUI/CLI) поведение НЕ меняется: workers=CONCURRENT_DOWNLOADS,
+        # start_jitter=0 → треки стартуют без задержки, как раньше.
         # обложка плейлиста → folder.jpg + cover.jpg (один раз, до треков).
         # album = название плейлиста: треки соберутся в один альбом «My Mix».
         album = subdir
@@ -281,16 +286,21 @@ class DownloadManager:
             pending.append(t)
 
         total = len(tracks)  # для тега track=N/всего → правильный порядок в плеере
-        workers = max(1, int(config.CONCURRENT_DOWNLOADS))
+        workers = max(1, int(config.CONCURRENT_DOWNLOADS if workers is None else workers))
 
         # ── параллельно (как 4KVD): N потоков одновременно, без пауз ──
         if workers > 1:
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=workers) as ex:
-                futures = [
-                    ex.submit(self.download_track, t, on_progress, subdir, album, total)
-                    for t in pending
-                ]
+                futures = []
+                for t in pending:
+                    # ramp-up + джиттер: не залп, а «волной» (только если задан, web-слой)
+                    if start_jitter > 0 and not self._cancelled:
+                        _interruptible_sleep(random.uniform(0.0, start_jitter),
+                                             lambda: self._cancelled)
+                    futures.append(
+                        ex.submit(self.download_track, t, on_progress, subdir, album, total)
+                    )
                 for f in futures:
                     try:
                         f.result()

@@ -128,6 +128,27 @@ MIX_SNAPSHOT_LIMIT = 25
 # Без этого yt-dlp видит "Only images are available". Пусто [] — отключить.
 REMOTE_COMPONENTS = ["ejs:github"]
 
+# ── Web-UI (localhost, 100% on-device) ──
+# Лёгкий сервер на stdlib (без зависимостей) → отдаёт страницу, браузер телефона
+# рисует. Бинд СТРОГО на 127.0.0.1 — никто из Wi-Fi не достучится.
+WEB_HOST = "127.0.0.1"
+WEB_PORT = 8765
+WEB_MAX_PLAYLISTS = 5          # очередь: до 5 My Mix одновременно в списке
+
+# Параллелизм по умолчанию: 3 плейлиста × 2 трека = 6 потоков (🟡 управляемый).
+# Слайдер в UI («всего потоков» 2–8) пересчитывает это: pl = round(streams/tracks).
+WEB_PLAYLIST_CONCURRENCY = 3   # сколько My Mix качать одновременно
+WEB_TRACKS_PER_PLAYLIST = 2    # сколько треков параллельно внутри каждого
+
+# Человеческий темп (анти-бан по оси «паттерн», не по «пику»):
+START_JITTER_MAX = 1.5         # сек: случайный разброс старта треков (0 = выкл, ramp-up)
+PLAYLIST_PAUSE_MIN = 2         # сек: пауза после полностью скачанного My Mix…
+PLAYLIST_PAUSE_MAX = 12        # …до переиспользования слота под следующий
+
+# Гибрид-блок ①: платформа → предпочитаемый кодек. Android/iOS/Linux = m4a
+# (копия AAC, без даунгрейда). Windows = mp3 для макс. совместимости старых плееров.
+WEB_PLATFORM_CODEC = {"android": "m4a", "ios": "m4a", "linux": "m4a", "windows": "mp3"}
+
 # Шаблон имени файла: Папка плейлиста / NN - Название
 OUTPUT_TEMPLATE = "%(playlist_title)s/%(playlist_index)02d - %(title)s.%(ext)s"
 # Для одиночного трека (без плейлиста)

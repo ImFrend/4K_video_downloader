@@ -3,6 +3,7 @@
 TermuxYoutube — точка входа.
 
   python main.py            запустить TUI (основной режим)
+  python main.py web        web-UI на localhost (открой в браузере телефона)
   python main.py login      первый вход в Google (видимое окно, 1 раз)
   python main.py refresh    обновить cookies (headless)
   python main.py grab URL   скачать без TUI (CLI-режим, для отладки)
@@ -26,6 +27,11 @@ def main() -> int:
     if cmd == "login":
         from auth.login import main as login_main
         return login_main()
+
+    if cmd == "web":
+        from web.server import serve
+        no_open = "--no-open" in sys.argv
+        return serve(open_browser=not no_open)
 
     if cmd == "refresh":
         from auth.refresh import main as refresh_main
