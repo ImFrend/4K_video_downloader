@@ -72,11 +72,19 @@ function readSettings() {
     streams: parseInt(E("streams").value, 10),
   };
 }
+// тот же делёж, что на сервере: бюджет streams → (плейлистов × треков), потолок 4/плейлист
+function computeSplit(s, n) {
+  n = Math.max(1, n || 1);
+  const plc = Math.max(1, Math.min(n, Math.round(s / 2)));
+  const tpp = Math.max(1, Math.min(4, Math.floor(s / plc)));
+  return { plc, tpp, total: plc * tpp };
+}
 function paintStreams() {
   const s = parseInt(E("streams").value, 10);
-  const pl = Math.round(s / 2);
-  const r = riskOf(s);
-  E("streamsLabel").textContent = `${pl} ${plPlur(pl)} × 2 трека = ${s} потоков`;
+  const n = state ? (state.playlists || []).filter((p) => p.status !== "error").length : 0;
+  const sp = computeSplit(s, n);
+  const r = riskOf(sp.total);                 // риск по РЕАЛЬНОМУ числу потоков
+  E("streamsLabel").textContent = `${sp.plc} ${plPlur(sp.plc)} × ${sp.tpp} трека = ${sp.total} потоков`;
   E("riskTag").textContent = r.e;
   E("riskSub").textContent = r.t;
   const pos = ((s - 2) / 6) * 100;
@@ -380,6 +388,7 @@ function applyState() {
     E("streams").value = state.settings.streams; paintStreams();
   }
   renderQueue();
+  paintStreams();              // делёж/риск зависят от числа добавленных миксов
   renderGo();
   renderCookies();
   if (detailId != null) renderDetail();
