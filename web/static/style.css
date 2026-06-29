@@ -36,9 +36,12 @@ body { overflow: hidden; }
 .view {
   position: fixed; inset: 0;
   display: flex; flex-direction: column;
+  background: var(--bg);          /* непрозрачно: верхний экран перекрывает нижний */
   transition: transform .42s var(--spring), opacity .3s var(--ease);
   will-change: transform;
 }
+.view-home { z-index: 1; }
+.view-detail { z-index: 2; }      /* детали всегда поверх главной */
 .view-detail { transform: translateX(100%); }
 body.detail .view-home   { transform: translateX(-22%); opacity: .4; }
 body.detail .view-detail { transform: translateX(0); }
