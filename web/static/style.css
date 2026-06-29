@@ -39,6 +39,8 @@ body { overflow: hidden; }
   background: var(--bg);          /* непрозрачно: верхний экран перекрывает нижний */
   transition: transform .42s var(--spring), opacity .3s var(--ease);
   will-change: transform;
+  backface-visibility: hidden;    /* стабильный композит-слой, без артефактов слайда */
+  -webkit-backface-visibility: hidden;
 }
 .view-home { z-index: 1; }
 .view-detail { z-index: 2; }      /* детали всегда поверх главной */
@@ -51,9 +53,7 @@ body.detail .view-detail { transform: translateX(0); }
   display: flex; align-items: center; gap: 12px;
   padding: calc(var(--safe-t) + 14px) 18px 12px;
   border-bottom: .5px solid var(--line);
-  background: rgba(0,0,0,.72);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  background: var(--bg);          /* сплошной фон вместо backdrop-blur — стабильный слайд */
 }
 .topbar h1 {
   font-size: 19px; font-weight: 700; letter-spacing: -.3px; margin: 0;
@@ -245,9 +245,7 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.18); }
 .footbar {
   padding: 12px 16px calc(var(--safe-b) + 14px);
   border-top: .5px solid var(--line);
-  background: rgba(0,0,0,.72);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  background: var(--bg);          /* сплошной фон вместо backdrop-blur — стабильный слайд */
 }
 .go {
   width: 100%; border: 0; border-radius: 14px;
@@ -276,7 +274,7 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.18); }
 .trk {
   display: flex; align-items: center; gap: 12px;
   padding: 11px 4px; border-bottom: .5px solid var(--line);
-  animation: pop .35s var(--spring) both;
+  /* без entry-анимации: 25 строк не анимируются разом во время слайда → стабильно */
 }
 .trk-i { width: 26px; text-align: center; font-size: 13px; color: var(--tx-2);
          font-variant-numeric: tabular-nums; flex-shrink: 0; }
