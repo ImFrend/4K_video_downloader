@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>TermuxYoutube</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- ─────────── ГЛАВНАЯ ─────────── -->
+  <section class="view view-home" id="view-home">
+    <header class="topbar">
+      <h1>TermuxYoutube</h1>
+      <button class="gear" id="gearBtn" aria-label="Настройки">⚙</button>
+    </header>
+
+    <main class="scroll">
+      <!-- вставить плейлист -->
+      <button class="paste" id="pasteBtn">
+        <span class="paste-ic">＋</span>
+        <span class="paste-tx">Вставить плейлист</span>
+      </button>
+      <p class="hint" id="pasteHint"></p>
+
+      <!-- ① платформа (гибрид: вид «приложения» + формат) -->
+      <div class="block">
+        <div class="block-h">Платформа <span class="soon">приложение — скоро</span></div>
+        <div class="seg" id="segPlatform">
+          <button data-v="ios">iOS</button>
+          <button data-v="windows">Win</button>
+          <button data-v="android" class="on">Android</button>
+          <button data-v="linux">Linux</button>
+        </div>
+        <p class="sub" id="platformSub">формат: без ограничений (Best)</p>
+      </div>
+
+      <!-- ② качество -->
+      <div class="block">
+        <div class="block-h">Качество</div>
+        <div class="seg" id="segQuality">
+          <button data-v="best" class="on">Best</button>
+          <button data-v="256k">256 kbps</button>
+        </div>
+        <p class="sub" id="qualitySub">оригинал, без перекодирования</p>
+      </div>
+
+      <!-- ③ параллелизм -->
+      <div class="block">
+        <div class="block-h">Параллелизм <span class="risk" id="riskTag">🟡</span></div>
+        <input type="range" id="streams" min="2" max="8" step="2" value="6">
+        <div class="slider-meta">
+          <span id="streamsLabel">3 плейлиста × 2 трека = 6 потоков</span>
+        </div>
+        <p class="sub" id="riskSub">чуть выше среднего — управляемый</p>
+      </div>
+
+      <!-- ④ очередь -->
+      <div class="block-h queue-h">Очередь <span id="queueCount" class="count"></span></div>
+      <ul class="queue" id="queue"></ul>
+    </main>
+
+    <div class="footbar">
+      <button class="go" id="goBtn" disabled>▸ Скачать всё</button>
+    </div>
+  </section>
+
+  <!-- ─────────── ДЕТАЛИ ПЛЕЙЛИСТА ─────────── -->
+  <section class="view view-detail" id="view-detail" hidden>
+    <header class="topbar">
+      <button class="back" id="backBtn">‹ Назад</button>
+      <h1 id="detailTitle">My Mix</h1>
+      <span class="spacer"></span>
+    </header>
+    <div class="detail-hero">
+      <div class="cover" id="detailCover"></div>
+      <div class="detail-stat" id="detailStat"></div>
+    </div>
+    <main class="scroll">
+      <ul class="tracks" id="tracklist"></ul>
+    </main>
+  </section>
+
+  <!-- ─────────── ЛИСТ НАСТРОЕК (вход) ─────────── -->
+  <div class="sheet-wrap" id="sheet" hidden>
+    <div class="sheet-bg" id="sheetBg"></div>
+    <div class="sheet">
+      <div class="sheet-grip"></div>
+      <h2>Вход 🔑</h2>
+      <div class="ck-row">
+        <span class="ck-dot" id="ckDot"></span>
+        <span id="ckMsg">—</span>
+      </div>
+      <p class="sheet-note">
+        Обновление cookies — <b>автоматическое</b>, по времени, без кнопок.
+        Вход нужен <b>редко</b> — только если сессия истекла. Тогда на телефоне:
+      </p>
+      <pre class="cmd">bash scripts/login-debian.sh</pre>
+      <button class="sheet-close" id="sheetClose">Понятно</button>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
