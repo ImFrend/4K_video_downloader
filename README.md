@@ -97,8 +97,8 @@ TermuxYoutube/
 ### 1. Получить код (GitHub)
 ```bash
 pkg install git -y
-git clone https://github.com/<твой-логин>/TermuxYoutube.git
-cd TermuxYoutube
+git clone https://github.com/<твой-логин>/4K_video_downloader.git
+cd 4K_video_downloader
 ```
 
 ### 2. Нативная часть (ядро + TUI + Web)
@@ -125,8 +125,8 @@ bash scripts/install-nerdfont.sh
 **3a. Поставить Debian + Playwright + Chromium** (один раз):
 ```bash
 proot-distro login debian --shared-tmp \
-  --bind ~/TermuxYoutube:/root/TermuxYoutube
-cd /root/TermuxYoutube
+  --bind ~/4K_video_downloader:/root/4K_video_downloader
+cd /root/4K_video_downloader
 bash scripts/setup-debian.sh
 exit                         # вернуться в Termux
 ```
@@ -139,8 +139,8 @@ bash scripts/start-x11.sh    # затем ОТКРОЙ приложение Term
 **3c. Видимый вход** (в другой сессии Termux → Debian):
 ```bash
 proot-distro login debian --shared-tmp \
-  --bind ~/TermuxYoutube:/root/TermuxYoutube
-cd /root/TermuxYoutube
+  --bind ~/4K_video_downloader:/root/4K_video_downloader
+cd /root/4K_video_downloader
 bash scripts/login-debian.sh   # откроется Chromium → войди руками (пароль+2FA)
 ```
 cookies сохранятся в профиль и в `cookies.txt`. Дальше — само:
@@ -210,8 +210,8 @@ python main.py web      # поднимет сервер и сам откроет
 2. Слинкуй launcher в папку ярлыков и сделай исполняемым:
    ```bash
    mkdir -p ~/.shortcuts
-   chmod +x ~/TermuxYoutube/scripts/start-web.sh
-   ln -sf ~/TermuxYoutube/scripts/start-web.sh ~/.shortcuts/TermuxYoutube
+   chmod +x ~/4K_video_downloader/scripts/start-web.sh
+   ln -sf ~/4K_video_downloader/scripts/start-web.sh ~/.shortcuts/TermuxYoutube
    ```
 3. Добавь на домашний экран **виджет Termux:Widget** → тап по «TermuxYoutube»
    поднимает сервер (с `wake-lock`) и открывает UI. Без единой команды.
