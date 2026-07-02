@@ -59,6 +59,7 @@ def _refresh_once() -> Tuple[str, str]:
         user_data_dir=str(config.BROWSER_PROFILE_DIR),
         headless=True,
         args=list(config.CHROMIUM_ARGS),
+        ignore_default_args=["--enable-automation"],  # не палить автоматизацию
     )
     if config.CHROMIUM_EXECUTABLE:
         launch_kwargs["executable_path"] = config.CHROMIUM_EXECUTABLE

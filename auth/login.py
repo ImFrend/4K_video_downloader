@@ -41,6 +41,8 @@ def main() -> int:
         user_data_dir=str(config.BROWSER_PROFILE_DIR),
         headless=False,
         args=list(config.CHROMIUM_ARGS),   # софт-рендер для Termux-X11
+        # убрать метку автоматизации → Google не ругается «browser not secure»
+        ignore_default_args=["--enable-automation"],
         viewport={"width": 412, "height": 915},  # пропорции телефона
     )
     if config.CHROMIUM_EXECUTABLE:
