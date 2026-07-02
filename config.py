@@ -50,6 +50,7 @@ CHROMIUM_ARGS = [
     "--disable-dev-shm-usage",
     "--use-gl=swiftshader",          # софт-рендер GL (лечит чёрный экран)
     "--enable-unsafe-swiftshader",   # новые Chromium без этого выключают SwiftShader
+    "--disable-blink-features=AutomationControlled",  # скрыть navigator.webdriver → Google не блокирует вход
     "--disable-quic",                # proot режет UDP → форсим TCP-TLS (лечит SSL reset)
     "--no-first-run",
     "--no-default-browser-check",
