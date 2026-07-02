@@ -107,8 +107,28 @@ class DownloadManager:
         """My Mix / radio: list=RD... — динамическое бесконечное радио."""
         return bool(re.search(r"[?&]list=RD", url))
 
+    @staticmethod
+    def _normalize_mix_url(url: str) -> str:
+        """RD-радио (My Mix) НЕ существует как отдельный плейлист → `playlist?list=RD…`
+        редиректит на главную. yt-dlp нужен watch-URL с сидом: watch?v=<сид>&list=RD…
+        Сид берём из v= (если есть) либо извлекаем из самого id микса."""
+        m = re.search(r"[?&]list=(RD[A-Za-z0-9_-]+)", url)
+        if not m:
+            return url
+        mix_id = m.group(1)
+        vm = re.search(r"[?&]v=([A-Za-z0-9_-]{11})", url)
+        seed = vm.group(1) if vm else None
+        if not seed:
+            # RD<id>, RDMM<id>, RDAMVM<id>, RDEM<id>, RDAO<id>, RDCLAK<id>, RDGMEM<id>
+            sm = re.match(r"^RD(?:MM|AMVM|EM|AO|CLAK|GMEM)?([A-Za-z0-9_-]{11})$", mix_id)
+            seed = sm.group(1) if sm else None
+        if seed:
+            return f"https://www.youtube.com/watch?v={seed}&list={mix_id}"
+        return url
+
     # ---- 1. разбор плейлиста/трека (лёгкий) ----
     def probe(self, url: str) -> Playlist:
+        url = self._normalize_mix_url(url)   # My Mix `playlist?list=RD…` → watch?v=<сид>&list=…
         opts = self._base_opts() | {
             "skip_download": True,
             "extract_flat": "in_playlist",
