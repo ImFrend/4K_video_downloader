@@ -42,16 +42,18 @@ BROWSER_PROFILE_DIR = ROOT / "auth" / "profile"
 COOKIES_FILE = ROOT / "cookies.txt"
 
 # Флаги Chromium для proot/Termux-X11.
-# Чёрный экран в Termux:X11 = аппаратный GPU недоступен. Форсим софт-рендер
-# (swiftshader). Если всё ещё чёрный — попробуй раскомментировать --disable-gpu.
+# Чёрный экран в Termux:X11 = падает GL-инициализация. Лечение (проверено на S23):
+# софт-рендер через SwiftShader. ВАЖНО: НЕ сочетать с --disable-gpu — он убивает
+# GPU-процесс, в котором и работает SwiftShader, и экран снова чернеет.
 CHROMIUM_ARGS = [
     "--no-sandbox",
     "--disable-dev-shm-usage",
-    "--disable-gpu",              # без GPU-процесса → нет краша GL-инициализации
-    "--disable-quic",            # proot режет UDP → форсим TCP-TLS (лечит SSL reset)
+    "--use-gl=swiftshader",          # софт-рендер GL (лечит чёрный экран)
+    "--enable-unsafe-swiftshader",   # новые Chromium без этого выключают SwiftShader
+    "--disable-quic",                # proot режет UDP → форсим TCP-TLS (лечит SSL reset)
     "--no-first-run",
     "--no-default-browser-check",
-    "--test-type",               # без назойливых инфобаров
+    "--test-type",                   # без назойливых инфобаров
 ]
 
 # Путь к СИСТЕМНОМУ Chromium (ARM-сборка из apt внутри Debian).
