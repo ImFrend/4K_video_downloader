@@ -47,13 +47,14 @@ def in_browser_layer() -> bool:
 
 
 def _rootfs_candidates() -> list[Path]:
-    """Где может лежать rootfs. Путь зависит от версии proot-distro — это лишь
-    быстрая проверка, единственным источником правды он быть не может."""
-    prefix = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
-    home = Path(os.path.expanduser("~"))
+    """Где может лежать rootfs. В proot-distro 5.x это containers/, в ≤4.x —
+    installed-rootfs/. Это лишь быстрая проверка: источником правды путь быть
+    не может, его меняют между версиями."""
+    base = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr")) \
+        / "var/lib/proot-distro"
     return [
-        Path(prefix) / "var/lib/proot-distro/installed-rootfs" / config.PROOT_DISTRO,
-        home / ".proot-distro/installed-rootfs" / config.PROOT_DISTRO,
+        base / "containers" / config.PROOT_DISTRO,
+        base / "installed-rootfs" / config.PROOT_DISTRO,
     ]
 
 
@@ -71,9 +72,10 @@ def have_proot() -> bool:
     if any(p.is_dir() for p in _rootfs_candidates()):
         return True
     try:
-        out = subprocess.run(["proot-distro", "list", "--installed"],
+        # -q: только имена, по одному в строке (в 5.x флага --installed уже нет)
+        out = subprocess.run(["proot-distro", "list", "-q"],
                              capture_output=True, text=True, timeout=30)
-        if config.PROOT_DISTRO in (out.stdout or ""):
+        if config.PROOT_DISTRO in (out.stdout or "").split():
             return True
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         pass
