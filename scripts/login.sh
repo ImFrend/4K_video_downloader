@@ -52,8 +52,20 @@ trap cleanup EXIT
 # pkg есть только в нативном Termux — внутри Debian его нет (там apt)
 command -v pkg >/dev/null 2>&1 || die "это скрипт для нативного Termux (внутри Debian он не нужен)"
 command -v proot-distro >/dev/null 2>&1 || die "нет proot-distro — сначала: bash scripts/setup-termux.sh"
-[ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO" ] \
-    || die "нет дистрибутива '$DISTRO' — сначала: bash scripts/setup-termux.sh"
+
+# Где лежит rootfs — НЕ гадаем: путь зависит от версии proot-distro, и захардкоженный
+# `$PREFIX/var/lib/proot-distro/installed-rootfs/` уже давал ложное «нет дистрибутива»
+# на рабочей установке. Проверка мягкая: не нашли — предупреждаем и всё равно пробуем,
+# а настоящую ошибку (если она есть) скажет сам proot-distro.
+distro_ready() {
+    for d in "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO" \
+             "$HOME/.proot-distro/installed-rootfs/$DISTRO"; do
+        [ -d "$d" ] && return 0
+    done
+    proot-distro list --installed 2>/dev/null | grep -qw -- "$DISTRO" && return 0
+    return 1
+}
+distro_ready || say "⚠  не вижу '$DISTRO' в обычных местах — пробую всё равно"
 
 # Пролог инннер-команды: находим ARM-Chromium явно (на ~/.bashrc не полагаемся —
 # он подхватывается только интерактивным шеллом, а мы запускаем bash -c).

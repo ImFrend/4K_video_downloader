@@ -173,14 +173,14 @@ Termux **сам** сходит в Debian headless и обновит их
 ## Архитектура
 
 ```
-┌───────────────── Android · Termux ─────────────────────┐
-│  НАТИВНО в Termux:                                      │
-│    Textual TUI ─┐                                       │
-│                 ├─► core/downloader (yt-dlp как lib)    │
-│    Web-UI ───────┘        │  progress hooks             │
-│    (web/server.py,        ▼                             │
-│     stdlib, 127.0.0.1)  ffmpeg ──► /storage/.../Music/  │
-│         │                 ▲                             │
+┌───────────────── Android · Termux ───────────────────────┐
+│  НАТИВНО в Termux:                                       │
+│    Textual TUI ─┐                                        │
+│                 ├─► core/downloader (yt-dlp как lib)     │
+│    Web-UI ───────┘        │  progress hooks              │
+│    (web/server.py,        ▼                              │
+│     stdlib, 127.0.0.1)  ffmpeg ──► /storage/.../Music/   │
+│         │                 ▲                              │
 │         │                 │ cookies.txt (общий файл)     │
 │    auth/bridge ───────────┘  ← мост: сам ходит в proot   │
 │         │                                                │
