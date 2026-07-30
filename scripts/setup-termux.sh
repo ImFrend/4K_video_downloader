@@ -58,8 +58,9 @@ fi
 
 echo ">> [6/7] proot-distro + $DISTRO (для браузер-слоя авторизации)"
 pkg install -y proot-distro
-# путь к rootfs зависит от версии proot-distro — не гадаем, спрашиваем его самого
-if proot-distro list --installed 2>/dev/null | grep -qw -- "$DISTRO"; then
+# путь к rootfs зависит от версии proot-distro (5.x: containers/, ≤4.x:
+# installed-rootfs/) — не гадаем, спрашиваем его самого. -q = только имена.
+if proot-distro list -q 2>/dev/null | grep -qx -- "$DISTRO"; then
     echo "   ($DISTRO уже установлен)"
 else
     proot-distro install "$DISTRO" || echo "   ($DISTRO уже установлен либо не встал — проверю на следующем шаге)"
