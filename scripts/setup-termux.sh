@@ -58,10 +58,11 @@ fi
 
 echo ">> [6/7] proot-distro + $DISTRO (для браузер-слоя авторизации)"
 pkg install -y proot-distro
-if [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO" ]; then
+# путь к rootfs зависит от версии proot-distro — не гадаем, спрашиваем его самого
+if proot-distro list --installed 2>/dev/null | grep -qw -- "$DISTRO"; then
     echo "   ($DISTRO уже установлен)"
 else
-    proot-distro install "$DISTRO" || echo "   !! не удалось установить $DISTRO"
+    proot-distro install "$DISTRO" || echo "   ($DISTRO уже установлен либо не встал — проверю на следующем шаге)"
 fi
 
 echo ">> [7/7] Браузер-слой внутри $DISTRO (Playwright + ARM-Chromium)"

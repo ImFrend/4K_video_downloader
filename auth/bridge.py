@@ -46,14 +46,39 @@ def in_browser_layer() -> bool:
         return False
 
 
-def _rootfs() -> Path:
+def _rootfs_candidates() -> list[Path]:
+    """Где может лежать rootfs. Путь зависит от версии proot-distro — это лишь
+    быстрая проверка, единственным источником правды он быть не может."""
     prefix = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
-    return Path(prefix) / "var/lib/proot-distro/installed-rootfs" / config.PROOT_DISTRO
+    home = Path(os.path.expanduser("~"))
+    return [
+        Path(prefix) / "var/lib/proot-distro/installed-rootfs" / config.PROOT_DISTRO,
+        home / ".proot-distro/installed-rootfs" / config.PROOT_DISTRO,
+    ]
 
 
 def have_proot() -> bool:
-    """Есть ли отсюда ход в браузер-слой (proot-distro + установленный дистрибутив)."""
-    return bool(shutil.which("proot-distro")) and _rootfs().is_dir()
+    """
+    Есть ли отсюда ход в браузер-слой.
+
+    Раньше здесь стоял захардкоженный путь к rootfs — и на рабочей установке он
+    не совпал, из-за чего авто-обновление cookies молча выключалось. Теперь
+    решает наличие самого proot-distro: если дистрибутива нет, об этом честно
+    скажет его собственная ошибка, а не тихий False.
+    """
+    if not shutil.which("proot-distro"):
+        return False
+    if any(p.is_dir() for p in _rootfs_candidates()):
+        return True
+    try:
+        out = subprocess.run(["proot-distro", "list", "--installed"],
+                             capture_output=True, text=True, timeout=30)
+        if config.PROOT_DISTRO in (out.stdout or ""):
+            return True
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+    # не подтвердили — но и не отказываем: пусть попытка сама покажет причину
+    return True
 
 
 def have_login_profile() -> bool:
