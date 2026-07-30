@@ -4,8 +4,9 @@ TermuxYoutube — точка входа.
 
   python main.py            запустить TUI (основной режим)
   python main.py web        web-UI на localhost (открой в браузере телефона)
-  python main.py login      первый вход в Google (видимое окно, 1 раз)
-  python main.py refresh    обновить cookies (headless)
+  python main.py login      вход в Google — одной командой, окно откроется,
+                            только если сохранённая сессия уже мертва
+  python main.py refresh    обновить cookies (сам сходит в браузер-слой)
   python main.py grab URL   скачать без TUI (CLI-режим, для отладки)
 """
 from __future__ import annotations
@@ -25,8 +26,10 @@ def main() -> int:
         return 0
 
     if cmd == "login":
-        from auth.login import main as login_main
-        return login_main()
+        # на телефоне это scripts/login.sh (X11 + proot берёт на себя он),
+        # на десктопе — прямой запуск auth.login
+        from auth.bridge import run_login
+        return run_login(sys.argv[2:])
 
     if cmd == "web":
         from web.server import serve
