@@ -1,11 +1,12 @@
 #!/bin/bash
 # Настройка БРАУЗЕР-СЛОЯ внутри proot-distro/Debian (Playwright + системный Chromium).
-# ВАЖНО: запускать ВНУТРИ Debian, войдя с bind-монтированием папки проекта:
 #
-#   proot-distro login debian --bind ~/TermuxYoutube:/root/TermuxYoutube
-#   cd /root/TermuxYoutube && bash scripts/setup-debian.sh
+# Руками запускать не надо — это делает scripts/setup-termux.sh, он же сам заходит
+# в proot с bind-монтированием проекта. Bind нужен, чтобы cookies.txt из браузера
+# лёг в ТУ ЖЕ папку, которую видит качалка в нативном Termux.
 #
-# Bind нужен, чтобы cookies.txt из браузера лёг в ТУ ЖЕ папку, что видит TUI в Termux.
+# Если всё же вручную (внутри Debian, в примонтированной папке проекта):
+#   bash scripts/setup-debian.sh
 set -e
 
 echo ">> [1/3] Пакеты Debian (chromium ARM, ffmpeg, python)"
@@ -36,11 +37,10 @@ cat <<EOF
  Браузер-слой готов (Debian).
    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$CHROMIUM_BIN
 
- Дальше (внутри Debian, в папке проекта):
-   python3 -m auth.login     # 1 раз, видимое окно — нужен termux-x11
-   python3 -m auth.refresh   # обновить cookies headless (перед скачиванием)
+ Возвращайся в НАТИВНЫЙ Termux — дальше всё оттуда, одной командой:
+   bash scripts/login.sh     вход в Google (окно откроется, только если надо)
+   python main.py web        качалка
 
- Скачивание (TUI) запускается в НАТИВНОМ Termux:
-   python main.py
+ Обновление cookies дёргается автоматически перед скачиванием.
 ============================================================
 EOF
