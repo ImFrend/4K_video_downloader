@@ -7,9 +7,12 @@
     даже самом слабом/старом телефоне. Рисует браузер телефона, не сервер.
   • Очередь до 5 My Mix. Параллелизм: N плейлистов × M треков (по умолчанию 3×2=6),
     человеческий темп: ramp-up/джиттер старта + пауза между плейлистами.
-  • Никакой кнопки refresh: cookies обновляются сами, по времени, невидимо.
+  • Никакой кнопки refresh: cookies обновляются сами, по времени, невидимо
+    (нативный Termux ходит в браузер-слой сам — см. auth/bridge.py).
+  • Вход в Google — одной кнопкой в ⚙: сервер сам поднимет X11, откроет
+    Termux:X11 и покажет форму. Ни одной команды в терминале.
 
-Запуск:  python main.py web     (или ~/.shortcuts/start.sh на телефоне)
+Запуск:  python main.py web     (или тап по виджету TermuxYoutube)
 """
 from __future__ import annotations
 
@@ -24,6 +27,7 @@ from typing import Optional
 
 import config
 from core.downloader import DownloadManager, Track
+from auth import bridge
 from auth.refresh import cookies_age_hours, ensure_fresh_cookies
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -72,6 +76,8 @@ class JobManager:
         self.version = 0          # дёргается при любом изменении → триггер SSE
         self.dm = DownloadManager()
         self.cookies = {"status": "", "msg": ""}
+        # состояние входа: idle | running | ok | error (+ хвост лога для UI)
+        self.auth = {"state": "idle", "msg": "", "log": []}
         default_streams = config.WEB_PLAYLIST_CONCURRENCY * config.WEB_TRACKS_PER_PLAYLIST
         self.settings = {"platform": "android", "quality": "max", "streams": default_streams}
         self._refresh_cookie_status()
@@ -88,6 +94,42 @@ class JobManager:
             self.cookies = {"status": "stale", "msg": f"устарели ({age:.0f}ч)"}
         else:
             self.cookies = {"status": "fresh", "msg": f"свежие ({age:.1f}ч)"}
+
+    # ---- вход в Google (одна кнопка вместо шести команд) ----
+    def start_login(self, force: bool = False) -> tuple[bool, str]:
+        """Запускает умный вход в фоне. Окно откроется, только если сессия мертва."""
+        with self.lock:
+            if self.auth.get("state") == "running":
+                return False, "вход уже идёт"
+            self.auth = {"state": "running", "msg": "проверяю сохранённую сессию…",
+                         "log": []}
+            self._bump()
+        threading.Thread(target=self._login_worker, args=(force,), daemon=True).start()
+        return True, "ok"
+
+    def _login_worker(self, force: bool) -> None:
+        def on_line(line: str) -> None:
+            with self.lock:
+                log = list(self.auth.get("log", []))
+                log.append(line)
+                self.auth["log"] = log[-6:]
+                self.auth["msg"] = line
+                self._bump()
+
+        rc = 1
+        try:
+            rc = bridge.stream_login(on_line, ["--force"] if force else [])
+        except Exception as ex:  # noqa: BLE001
+            on_line(f"!! {_short(ex)}")
+        with self.lock:
+            ok = (rc == 0 and config.have_cookies())
+            self.auth["state"] = "ok" if ok else "error"
+            if ok:
+                self.auth["msg"] = "вход сохранён ✓"
+            elif not self.auth.get("msg"):
+                self.auth["msg"] = f"вход не завершён (код {rc})"
+            self._refresh_cookie_status()
+            self._bump()
 
     # ---- очередь ----
     def add_url(self, url: str) -> tuple[Optional[int], str]:
@@ -173,12 +215,14 @@ class JobManager:
         # floor → суммарно потоков не больше слайдера (он = потолок риска)
         tracks_per = max(1, min(config.WEB_MAX_TRACKS_PER_PLAYLIST, streams // pl_conc))
 
-        # cookies: тихий авто-refresh по времени (без кнопки), один раз перед стартом
+        # cookies: тихий авто-refresh по времени (без кнопки), один раз перед стартом.
+        # Если прямо сейчас идёт вход — не лезем вторым Chromium в тот же профиль.
         try:
-            code, msg = ensure_fresh_cookies()
-            with self.lock:
-                self.cookies = {"status": code, "msg": msg}
-                self._bump()
+            if self.auth.get("state") != "running":
+                code, msg = ensure_fresh_cookies()
+                with self.lock:
+                    self.cookies = {"status": code, "msg": msg}
+                    self._bump()
         except Exception:  # noqa: BLE001
             pass
 
@@ -231,6 +275,8 @@ class JobManager:
                 "running": self.running,
                 "settings": dict(self.settings),
                 "cookies": dict(self.cookies),
+                # list() — снимок хвоста лога: json.dumps идёт уже без блокировки
+                "auth": {**self.auth, "log": list(self.auth.get("log", []))},
                 "max": config.WEB_MAX_PLAYLISTS,
                 "playlists": [self._job_json(j) for j in self.jobs],
             }
@@ -358,6 +404,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/remove":
             MANAGER.remove(int(body.get("id", 0)))
             self._json({"ok": True})
+        elif path == "/api/login":
+            ok, msg = MANAGER.start_login(force=bool(body.get("force")))
+            self._json({"ok": ok, "msg": msg})
         else:
             self._send(404, b"not found", "text/plain")
 

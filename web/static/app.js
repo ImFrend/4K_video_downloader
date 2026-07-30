@@ -352,6 +352,31 @@ function renderCookies() {
   E("ckMsg").textContent = c.msg || "—";
 }
 
+// ─────────── вход одной кнопкой ───────────
+// Сервер сам решит: сессия жива → тихо обновит cookies (окна не будет),
+// мертва → поднимет X11, откроет Termux:X11 и покажет форму Google.
+E("loginBtn").addEventListener("click", async () => {
+  if (E("loginBtn").disabled) return;
+  const r = await api("/api/login");
+  if (!r.ok) hint(r.msg || "вход не запустился", true);
+});
+
+function renderAuth() {
+  const a = state.auth || {};
+  const btn = E("loginBtn"), log = E("loginLog");
+  const busy = a.state === "running";
+  btn.disabled = busy;
+  btn.textContent = busy ? "Вхожу…" : (a.state === "ok" ? "Войти ещё раз" : "Войти в Google");
+
+  const lines = a.log || [];
+  log.hidden = lines.length === 0;
+  if (lines.length) {
+    const text = lines.join("\n");
+    if (log.textContent !== text) { log.textContent = text; log.scrollTop = log.scrollHeight; }
+  }
+  log.className = "log" + (a.state === "error" ? " err" : a.state === "ok" ? " ok" : "");
+}
+
 E("gearBtn").addEventListener("click", () => { E("sheet").hidden = false; });
 const closeSheet = () => { E("sheet").hidden = true; };
 E("sheetClose").addEventListener("click", closeSheet);
@@ -391,6 +416,7 @@ function applyState() {
   paintStreams();              // делёж/риск зависят от числа добавленных миксов
   renderGo();
   renderCookies();
+  renderAuth();
   if (detailId != null) renderDetail();
 }
 

@@ -97,9 +97,13 @@
       </div>
       <p class="sheet-note">
         Обновление cookies — <b>автоматическое</b>, по времени, без кнопок.
-        Вход нужен <b>редко</b> — только если сессия истекла. Тогда на телефоне:
+        Кнопка нужна <b>редко</b>: если сессия ещё жива, окна не будет вообще —
+        просто обновятся cookies. Если истекла — телефон сам откроет
+        <b>Termux:X11</b> с формой Google, а как войдёшь, окно закроется само.
       </p>
-      <pre class="cmd">bash scripts/login-debian.sh</pre>
+      <button class="sheet-go" id="loginBtn">Войти в Google</button>
+      <pre class="log" id="loginLog" hidden></pre>
+      <p class="sheet-note dim">сменить аккаунт: <code>bash scripts/login.sh --force</code></p>
       <button class="sheet-close" id="sheetClose">Понятно</button>
     </div>
   </div>
