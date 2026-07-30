@@ -8,18 +8,26 @@ cookies.txt для yt-dlp. Это закрывает проблему «прот
 
   python -m auth.refresh        — обновить сейчас (выход 0 ок / 1 нужен повторный login)
 
-Также отсюда берётся ensure_fresh_cookies() — её зовёт TUI/CLI ПЕРЕД скачиванием:
-  • в Debian (есть браузер) → реально обновляет headless, если cookies устарели;
-  • в нативном Termux (браузера нет) → просто проверяет свежесть и предупреждает.
+Также отсюда берётся ensure_fresh_cookies() — её зовёт TUI/Web/CLI ПЕРЕД скачиванием:
+  • в Debian (браузер под рукой) → обновляет headless напрямую;
+  • в нативном Termux (браузера нет) → САМ идёт в браузер-слой через proot
+    (auth/bridge.py). Раньше тут была тупиковая ветка «обнови в Debian вручную»:
+    обещанного «cookies обновляются сами, без кнопки» на телефоне не было.
 """
 from __future__ import annotations
 
 import sys
+import threading
 import time
 from typing import Tuple
 
 import config
+from auth import bridge
 from auth.cookies_export import has_auth_cookies, write_cookies_file
+
+# один поток обновления на процесс: web-UI может дёрнуть ensure_fresh_cookies()
+# из нескольких мест, а поднимать два Chromium в proot одновременно незачем
+_LOCK = threading.RLock()
 
 YOUTUBE = "https://www.youtube.com/account"
 
@@ -45,11 +53,15 @@ def _has_browser_layer() -> bool:
     return _playwright_available() and config.BROWSER_PROFILE_DIR.exists()
 
 
+def _fresh_msg(age: float) -> Tuple[str, str]:
+    return "fresh", f"cookies свежие ({age:.1f}ч)"
+
+
 # ──────────────────── собственно refresh ────────────────────
 def _refresh_once() -> Tuple[str, str]:
     """Один headless-проход обновления. Возвращает (code, message)."""
     if not config.BROWSER_PROFILE_DIR.exists():
-        return "no_profile", "профиль не найден — нужен вход: python -m auth.login"
+        return "no_profile", "вход ещё не выполнен — bash scripts/login.sh"
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -80,7 +92,7 @@ def _refresh_once() -> Tuple[str, str]:
         return "error", f"не удалось запустить Chromium: {ex}"
 
     if not has_auth_cookies(cookies):
-        return "expired", "сессия истекла — нужен повторный вход: python -m auth.login"
+        return "expired", "сессия истекла — нужен вход: bash scripts/login.sh"
 
     n = write_cookies_file(cookies, config.COOKIES_FILE)
     return "ok", f"cookies.txt обновлён ({n} cookies)"
@@ -90,30 +102,52 @@ def _refresh_once() -> Tuple[str, str]:
 def ensure_fresh_cookies(max_age_hours: float | None = None) -> Tuple[str, str]:
     """
     Вызывается ПЕРЕД скачиванием. Никогда не падает — только сообщает статус.
-    Коды: refreshed | fresh | stale | no_cookies | refresh_failed | skipped
+    Коды: fresh | refreshed | need_login | refresh_failed | no_cookies | stale
     """
     max_age = config.COOKIES_MAX_AGE_HOURS if max_age_hours is None else max_age_hours
     age = cookies_age_hours()
 
+    # свежие — браузер не трогаем вообще (ни здесь, ни через proot)
+    if age is not None and age < max_age:
+        return _fresh_msg(age)
+
+    # (а) мы внутри браузер-слоя — обновляем напрямую
     if _has_browser_layer():
-        if age is not None and age < max_age:
-            return "fresh", f"cookies свежие ({age:.1f}ч) — обновление не нужно"
         code, msg = _refresh_once()
         if code == "ok":
             return "refreshed", msg
+        if code in ("expired", "no_profile"):
+            return "need_login", msg
         return "refresh_failed", msg
 
-    # браузер-слоя здесь нет (нативный Termux) — только диагностика
+    # (б) нативный Termux — сами сходим в браузер-слой через proot.
+    #     Это и делает обновление cookies по-настоящему автоматическим.
+    if config.AUTO_REFRESH_VIA_PROOT and bridge.have_proot():
+        if not bridge.have_login_profile():
+            return "need_login", "вход не выполнен — bash scripts/login.sh"
+        with _LOCK:
+            age = cookies_age_hours()      # мог успеть обновить параллельный поток
+            if age is not None and age < max_age:
+                return _fresh_msg(age)
+            code, msg = bridge.refresh_via_proot()
+        if code == "ok":
+            return "refreshed", msg
+        if code == "expired":
+            return "need_login", msg
+        return "refresh_failed", msg
+
+    # (в) хода в браузер-слой нет — остаётся диагностика
     if age is None:
         return "no_cookies", "cookies.txt нет — приватные плейлисты недоступны"
-    if age > max_age:
-        return "stale", (f"cookies старые ({age:.0f}ч) — обнови в Debian: "
-                         f"python -m auth.refresh")
-    return "fresh", f"cookies свежие ({age:.1f}ч)"
+    return "stale", f"cookies старые ({age:.0f}ч) — обнови: bash scripts/login.sh"
 
 
 def main() -> int:
-    code, msg = _refresh_once()
+    """python -m auth.refresh — работает и в Debian, и в нативном Termux."""
+    if _playwright_available():
+        code, msg = _refresh_once()
+    else:
+        code, msg = bridge.refresh_via_proot()
     if code == "ok":
         print(f"✓  {msg}")
         return 0
