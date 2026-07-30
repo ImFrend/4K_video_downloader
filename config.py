@@ -66,6 +66,24 @@ CHROMIUM_EXECUTABLE = (
     or ""
 )
 
+# ── Мост Termux ⇄ Debian (см. auth/bridge.py) ──
+# Качалка живёт в НАТИВНОМ Termux, браузер — в proot-distro/Debian. Раньше между
+# этими мирами ходил ты руками (login/cd/exit). Теперь ходит код.
+PROOT_DISTRO = os.environ.get("TY_PROOT_DISTRO", "debian")
+# Куда монтируется папка проекта внутри Debian. Тот же контент — другой путь,
+# поэтому cookies.txt из браузера сразу виден качалке в Termux.
+PROOT_MOUNT = f"/root/{ROOT.name}"
+# Разрешить нативному Termux самому дёргать headless-refresh через proot.
+# TY_AUTO_PROOT=0 — вернуть старое поведение (только предупреждение).
+AUTO_REFRESH_VIA_PROOT = (
+    os.environ.get("TY_AUTO_PROOT", "1").lower() not in ("0", "false", "no")
+)
+# Сколько ждать headless-обновление cookies через proot (сек). proot стартует
+# медленно (~10-30с на телефоне), плюс сам заход на YouTube.
+PROOT_REFRESH_TIMEOUT = 240
+# Сколько ждать, пока ты введёшь пароль/2FA в видимом окне (сек).
+LOGIN_WAIT_TIMEOUT = 900
+
 # ── Внешний вид ──
 # Nerd Font иконки в TUI. Требуют установленного Nerd Font в терминале.
 # Выключить (безопасный Unicode-fallback):  TY_NERD_FONT=0

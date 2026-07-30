@@ -1,0 +1,176 @@
+"""
+Мост Termux ⇄ Debian — чтобы браузер-слой дёргался САМ, а не руками.
+
+Проект живёт в двух мирах:
+  • нативный Termux  — качалка (yt-dlp, TUI, web-UI). Браузера тут нет.
+  • proot-distro/Debian — Playwright + ARM-Chromium. Только ради cookies.
+
+Раньше пользователь сам ходил между мирами: `proot-distro login … --bind …`,
+`cd`, `python -m auth.refresh`, `exit`. Из-за этого «авто-обновление cookies»
+на телефоне не работало вообще (в Termux нет Playwright → refresh молча
+превращался в надпись «обнови в Debian»).
+
+Здесь один вход в браузер-слой: собрать команду, запустить, вернуть результат.
+Все, кто раньше писал инструкции пользователю, теперь зовут эти функции.
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import Callable, Iterable, Optional, Sequence, Tuple
+
+import config
+
+# Пролог инннер-команды: явно находим ARM-Chromium. НЕ полагаемся на ~/.bashrc —
+# он подхватывается только интерактивными шеллами, а мы запускаем bash -c.
+_PRELUDE = (
+    'export PYTHONUNBUFFERED=1; '
+    'export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH='
+    '"${PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:-'
+    '$(command -v chromium || command -v chromium-browser || true)}"; '
+)
+
+LOGIN_SCRIPT = config.ROOT / "scripts" / "login.sh"
+
+
+# ──────────────────────────── доступность слоёв ────────────────────────────
+def in_browser_layer() -> bool:
+    """Мы уже ВНУТРИ браузер-слоя (Debian с Playwright)?"""
+    try:
+        import playwright  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _rootfs() -> Path:
+    prefix = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
+    return Path(prefix) / "var/lib/proot-distro/installed-rootfs" / config.PROOT_DISTRO
+
+
+def have_proot() -> bool:
+    """Есть ли отсюда ход в браузер-слой (proot-distro + установленный дистрибутив)."""
+    return bool(shutil.which("proot-distro")) and _rootfs().is_dir()
+
+
+def have_login_profile() -> bool:
+    """Был ли хоть один успешный вход (профиль браузера лежит внутри репозитория)."""
+    return config.BROWSER_PROFILE_DIR.is_dir() and any(config.BROWSER_PROFILE_DIR.iterdir())
+
+
+def can_bridge() -> bool:
+    """Можно ли из нативного Termux сходить в браузер-слой и что-то там сделать."""
+    return have_proot() and have_login_profile()
+
+
+# ──────────────────────────── запуск в Debian ────────────────────────────
+def debian_argv(inner: str, shared_tmp: bool = False) -> list[str]:
+    """argv для запуска shell-команды внутри Debian с примонтированным проектом."""
+    argv = ["proot-distro", "login", config.PROOT_DISTRO]
+    if shared_tmp:
+        # через общий /tmp Debian видит X11-сокет Termux (нужно видимому окну)
+        argv.append("--shared-tmp")
+    argv += ["--bind", f"{config.ROOT}:{config.PROOT_MOUNT}", "--",
+             "bash", "-c", f"cd '{config.PROOT_MOUNT}'; {_PRELUDE}{inner}"]
+    return argv
+
+
+def run_in_debian(inner: str, timeout: float, shared_tmp: bool = False) -> Tuple[int, str]:
+    """Выполнить команду в Debian. Возвращает (код возврата, слитый вывод)."""
+    try:
+        p = subprocess.run(
+            debian_argv(inner, shared_tmp), capture_output=True, text=True,
+            timeout=timeout, errors="replace",
+        )
+    except subprocess.TimeoutExpired:
+        return 124, f"браузер-слой не ответил за {timeout:.0f}с"
+    except (FileNotFoundError, OSError) as ex:
+        return 127, f"не удалось запустить proot-distro: {ex}"
+    return p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
+
+
+# ──────────────────────────── headless-обновление cookies ────────────────────
+def refresh_via_proot() -> Tuple[str, str]:
+    """
+    Обновить cookies.txt, сходив в Debian headless. Зовётся из нативного Termux.
+    Коды: ok | expired | unavailable | error  (как у auth.refresh._refresh_once)
+    """
+    if not have_proot():
+        return "unavailable", "браузер-слой не установлен (bash scripts/setup-termux.sh)"
+    if not have_login_profile():
+        return "expired", "вход не выполнен — bash scripts/login.sh"
+
+    rc, out = run_in_debian("python3 -m auth.refresh",
+                            timeout=config.PROOT_REFRESH_TIMEOUT)
+    tail = out.strip().splitlines()[-1].strip() if out.strip() else ""
+    if rc == 0:
+        return "ok", tail or "cookies.txt обновлён"
+    if rc == 124:
+        return "error", tail or "браузер-слой не ответил вовремя"
+    # refresh.main() отдаёт 1 и на «сессия истекла», и на прочие сбои —
+    # различаем по тексту, чтобы UI мог предложить именно вход.
+    if "истек" in tail or "вход" in tail:
+        return "expired", tail
+    return "error", tail or f"браузер-слой вернул код {rc}"
+
+
+# ──────────────────────────── вход (видимое окно) ────────────────────────────
+def login_argv(extra: Sequence[str] = ()) -> list[str]:
+    """
+    argv «умного входа». На телефоне — scripts/login.sh (он сам решает, нужно ли
+    вообще открывать окно, и поднимает X11 + Termux:X11). На десктопе — прямой
+    запуск auth.login (там браузер уже под рукой).
+    """
+    if config.IS_TERMUX:
+        return ["bash", str(LOGIN_SCRIPT), *extra]
+    return [sys.executable, "-m", "auth.login", *extra]
+
+
+def run_login(extra: Sequence[str] = ()) -> int:
+    """Интерактивный вход в текущем терминале (main.py login)."""
+    try:
+        return subprocess.call(login_argv(extra), cwd=str(config.ROOT))
+    except (FileNotFoundError, OSError) as ex:
+        print(f"!! не удалось запустить вход: {ex}")
+        return 1
+
+
+def stream_login(on_line: Callable[[str], None],
+                 extra: Sequence[str] = ()) -> int:
+    """
+    Тот же вход, но построчно отдаёт вывод в callback — чтобы web-UI показывал
+    живой статус («проверяю сессию…», «открываю Termux:X11…», «готово»).
+    """
+    env = dict(os.environ, PYTHONUNBUFFERED="1")
+    try:
+        p = subprocess.Popen(
+            login_argv(extra), cwd=str(config.ROOT), env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, errors="replace",
+        )
+    except (FileNotFoundError, OSError) as ex:
+        on_line(f"!! не удалось запустить вход: {ex}")
+        return 127
+    assert p.stdout is not None
+    for line in p.stdout:
+        line = line.rstrip()
+        if line:
+            on_line(line)
+    return p.wait()
+
+
+def iter_tail(lines: Iterable[str], n: int = 6) -> list[str]:
+    """Последние n непустых строк — компактный лог для UI."""
+    keep: list[str] = []
+    for ln in lines:
+        if ln.strip():
+            keep.append(ln.strip())
+    return keep[-n:]
+
+
+def which_chromium() -> Optional[str]:
+    """Путь к Chromium в ТЕКУЩЕМ мире (не в Debian). Для диагностики."""
+    return shutil.which("chromium") or shutil.which("chromium-browser")
