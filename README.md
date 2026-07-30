@@ -1,10 +1,10 @@
 # TermuxYoutube
 
-Аудио-граббер плейлистов YouTube для **Samsung S23 Ultra** (aarch64, AMOLED),
-работает прямо в Termux. Качает **только аудио в максимальном качестве**, включая
-**приватные плейлисты** и динамические **My Mix** — через слой авторизации с
-авто-обновлением cookies. Два интерфейса: терминальный **TUI** и **Web-UI** в
-браузере телефона («как приложение», без команд).
+Аудио-граббер плейлистов YouTube для Android (проверено на **Samsung S23 Ultra**,
+aarch64), работает прямо в Termux. Качает **только аудио в максимальном
+качестве**, включая **приватные плейлисты** и динамические **My Mix** — через
+слой авторизации с авто-обновлением cookies. Два интерфейса: терминальный **TUI**
+и **Web-UI** в браузере телефона («как приложение», без команд).
 
 ---
 
@@ -26,126 +26,85 @@
 
 ---
 
-## Архитектура
+## Требования (поставить ДО установки)
 
-```
-┌───────────────── S23 Ultra · Termux ───────────────────┐
-│  НАТИВНО в Termux:                                      │
-│    Textual TUI ─┐                                       │
-│                 ├─► core/downloader (yt-dlp как lib)    │
-│    Web-UI ───────┘        │  progress hooks             │
-│    (web/server.py,        ▼                             │
-│     stdlib, 127.0.0.1)  ffmpeg ──► /storage/.../Music/  │
-│                           ▲                             │
-│                           │ cookies.txt (общий файл)     │
-│  В proot-distro / Debian (браузер-слой, нужен РЕДКО):   │
-│    Playwright + системный ARM-Chromium                  │
-│      auth/login   (1 раз, видимое окно через Termux:X11)│
-│      auth/refresh (headless, авто-обновляет cookies)    │
-└─────────────────────────────────────────────────────────┘
-```
+### 1. APK-приложения
 
-Принятые решения (почему так):
-| # | Решение | Выбор |
+Нужны 4 приложения. **Все — из одного источника** (F-Droid *или* GitHub-релизы).
+Смешивать нельзя: у них разные подписи, и «соседние» приложения (X11, API,
+Widget) просто не смогут общаться с Termux.
+
+| APK | Зачем | Где взять |
 |---|---|---|
-| 1 | Получение cookies | Браузер-слой: 1 раз видимый вход → дальше headless-refresh **по времени, без кнопки** |
-| 2 | Формат | TUI: AAC/m4a. Web: 3 реальных уровня (Opus ~160k / AAC 128k / ~50–64k) |
-| 4 | yt-dlp | Как **библиотека** (progress hooks, без парсинга текста) |
-| 5 | Дизайн | Премиум: AMOLED-чёрный, акцент iOS-blue, принципы iOS (GPU-анимации, пружины) |
-| 6 | Анти-бан | Джиттер старта + паузы между плейлистами + **адаптивный делёж потоков** |
-| 7 | Доставка кода | GitHub (`git pull`) |
-| 8 | Стек Web-UI | **stdlib** `http.server` — ноль зависимостей, тянет любой старый телефон |
+| **Termux** | сам терминал | [F-Droid](https://f-droid.org/packages/com.termux/) |
+| **Termux:X11** | экран для окна входа в Google | [github.com/termux/termux-x11](https://github.com/termux/termux-x11/releases) |
+| **Termux:API** | `termux-media-scan`, wake-lock, буфер обмена | [F-Droid](https://f-droid.org/packages/com.termux.api/) |
+| **Termux:Widget** | иконка запуска на домашнем экране | [F-Droid](https://f-droid.org/packages/com.termux.widget/) |
+
+> ⚠️ Версия из **Google Play устарела** и не обновляется — она не подойдёт.
+
+### 2. Место и питание
+
+- **~2.5 ГБ свободно**: Debian-контейнер + ARM-Chromium ≈ 1.5–2 ГБ, остальное —
+  Python-пакеты и кэш. Сама музыка — сверх этого.
+- **Отключить оптимизацию батареи для Termux**:
+  *Настройки → Приложения → Termux → Батарея → «Не оптимизировать / Unrestricted»*.
+  Иначе Android (Doze) прибьёт долгую загрузку при гаснущем экране.
+- Интернет на первом запуске нужен обязательно: yt-dlp докачивает решатель
+  JS-challenge YouTube (см. «Риски»).
 
 ---
 
-## Структура
+## Установка — одна команда
 
-```
-TermuxYoutube/
-├── main.py                 точка входа (tui | web | login | refresh | grab)
-├── config.py               пути и настройки (адаптируются Termux/desktop)
-├── core/
-│   └── downloader.py        ядро: probe, формат, загрузка, hooks, дедуп, медиаскан
-├── tui/
-│   ├── app.py               Textual-приложение
-│   └── app.tcss             премиум-тема (AMOLED)
-├── web/                     ── Web-UI (localhost, 100% on-device) ──
-│   ├── server.py            stdlib-сервер: очередь, SSE-прогресс, оркестрация
-│   └── static/
-│       ├── index.html       2 экрана: очередь ⇄ детали плейлиста
-│       ├── style.css        iOS-тема: AMOLED, сегменты, «созревающие» карточки
-│       └── app.js           SSE, keyed-DOM, drag-сегменты с резиной
-├── auth/
-│   ├── login.py             1-й вход (headful, persistent-профиль)
-│   ├── refresh.py           обновление cookies (headless) + ensure_fresh_cookies()
-│   └── cookies_export.py    Playwright cookies → Netscape (cookies.txt)
-├── scripts/
-│   ├── setup-termux.sh      нативная установка (ядро + TUI + Web)
-│   ├── setup-debian.sh      браузер-слой в proot/Debian
-│   ├── start-x11.sh         запуск Termux:X11 (для видимого входа)
-│   ├── login-debian.sh      видимый вход в Chromium
-│   ├── start-web.sh         launcher Web-UI для Termux:Widget (wake-lock)
-│   └── install-nerdfont.sh  Nerd Font для иконок TUI
-├── requirements.txt
-└── .gitignore               cookies.txt / профиль / музыка — НЕ коммитятся
-```
-
----
-
-## Установка на S23 Ultra
-
-### 1. Получить код (GitHub)
 ```bash
 pkg install git -y
-git clone https://github.com/<твой-логин>/4K_video_downloader.git
+git clone https://github.com/ImFrend/4K_video_downloader.git
 cd 4K_video_downloader
-```
-
-### 2. Нативная часть (ядро + TUI + Web)
-```bash
 bash scripts/setup-termux.sh
 ```
-После этого **публичное** уже качается (TUI или Web):
+
+`setup-termux.sh` делает **всё** сам, заходить в proot руками не надо:
+
+1. обновляет пакеты Termux;
+2. ставит нативную часть (python, ffmpeg, git, termux-api, deno);
+3. просит разрешение на память телефона (`termux-setup-storage`);
+4. ставит Python-зависимости качалки (yt-dlp, textual, rich);
+5. кладёт ярлыки в `~/.shortcuts` для Termux:Widget;
+6. ставит `proot-distro` + Debian;
+7. **сам заходит в Debian** и ставит там браузер-слой (Playwright + ARM-Chromium).
+
+Шаг 7 долгий (apt + Chromium, десятки минут на слабой сети). Если браузер-слой
+не нужен (качаешь только публичное) — пропусти его:
+
 ```bash
-python main.py        # TUI
-python main.py web    # Web-UI в браузере
+bash scripts/setup-termux.sh --no-browser
 ```
 
-### 2b. Иконки TUI (Nerd Font) — опционально, но красиво
+Скрипт **идемпотентный**: если что-то отвалилось (сеть, место) — просто запусти
+его ещё раз, уже поставленное переустанавливаться не будет.
+
+### Что именно ставится (полный список зависимостей)
+
+| Слой | Пакеты | Зачем |
+|---|---|---|
+| Termux, `pkg` | `python` `ffmpeg` `git` `termux-api` `python-pip` | ядро качалки, извлечение аудио, медиаскан |
+| Termux, `pkg` | `deno` (или `nodejs`) | JS-рантайм для n-challenge YouTube — **без него «Only images are available»** |
+| Termux, `pkg` | `proot-distro` | контейнер Debian под браузер |
+| Termux, `pkg` | `x11-repo` `termux-x11-nightly` `termux-am` | экран и автозапуск Termux:X11 (ставятся при первом входе) |
+| Termux, `pip` | `yt-dlp` `textual` `rich` | загрузка, TUI |
+| Debian, `apt` | `chromium` `ffmpeg` `python3` `python3-pip` | ARM-браузер для входа в Google |
+| Debian, `apt` | `fonts-liberation` `ca-certificates` | шрифты и TLS в Chromium |
+| Debian, `apt` | `matchbox-window-manager` `matchbox-keyboard` | окно и экранная клавиатура в X11 |
+| Debian, `pip` | `playwright` `yt-dlp` | управление браузером, экспорт cookies |
+
+Web-UI **зависимостей не имеет вообще** — он на stdlib (`http.server`).
+
+### Иконки TUI (Nerd Font) — опционально
+
 ```bash
 bash scripts/install-nerdfont.sh
 # не хочешь шрифт — выключи иконки: export TY_NERD_FONT=0
-```
-
-### 3. Браузер-слой (для приватных плейлистов) — встроенный вход «как в 4KVD»
-
-Нужен **редко** — только первый вход и когда сессия истечёт. Cookies-refresh
-дальше идёт сам, по времени, без окна.
-
-**3a. Поставить Debian + Playwright + Chromium** (один раз):
-```bash
-proot-distro login debian --shared-tmp \
-  --bind ~/4K_video_downloader:/root/4K_video_downloader
-cd /root/4K_video_downloader
-bash scripts/setup-debian.sh
-exit                         # вернуться в Termux
-```
-
-**3b. Запустить X11-сервер** (нативный Termux; нужно APK «Termux:X11»):
-```bash
-bash scripts/start-x11.sh    # затем ОТКРОЙ приложение Termux:X11
-```
-
-**3c. Видимый вход** (в другой сессии Termux → Debian):
-```bash
-proot-distro login debian --shared-tmp \
-  --bind ~/4K_video_downloader:/root/4K_video_downloader
-cd /root/4K_video_downloader
-bash scripts/login-debian.sh   # откроется Chromium → войди руками (пароль+2FA)
-```
-cookies сохранятся в профиль и в `cookies.txt`. Дальше — само:
-```bash
-python -m auth.refresh         # headless (или авто из main.py перед скачиванием)
 ```
 
 ---
@@ -155,11 +114,130 @@ python -m auth.refresh         # headless (или авто из main.py пере
 ```bash
 python main.py                 # TUI: вставь ссылку на плейлист → Enter
 python main.py web             # Web-UI на localhost (браузер телефона)
+python main.py login           # вход в Google (см. ниже — обычно не нужен)
+python main.py refresh         # обновить cookies вручную (обычно не нужно)
 python main.py grab <URL>      # без интерфейса (отладка)
-python main.py refresh         # обновить cookies
 ```
+
 Музыка сохраняется в `/storage/emulated/0/Music/<Плейлист>/NN - Название.m4a`
 (путь задан в `config.OUTPUT_DIR`).
+
+### Без единой команды: иконка на домашнем экране
+
+`setup-termux.sh` уже создал ярлыки. Осталось добавить **виджет Termux:Widget**
+на домашний экран и выбрать:
+
+- **TermuxYoutube** → поднимает Web-UI (с `wake-lock`) и открывает браузер;
+- **TermuxYoutube-login** → вход в Google (тот же умный вход, что ниже).
+
+---
+
+## Вход в Google — одна команда
+
+Нужен **редко**: только для приватных плейлистов и My Mix, и только когда
+сессия действительно умерла.
+
+```bash
+bash scripts/login.sh
+```
+
+Что делает скрипт сам (раньше это были 6 команд и 4 перехода между приложениями):
+
+1. **тихо проверяет сохранённую сессию** в Debian. Жива → просто обновляет
+   `cookies.txt` и выходит. **Окно не открывается вообще** — если ты уже
+   авторизован, никакой возни с X11 не будет;
+2. если сессии нет — ставит/поднимает X11-сервер, **сам открывает приложение
+   Termux:X11**, заходит в Debian, поднимает оконный менеджер с экранной
+   клавиатурой и Chromium с формой Google;
+3. ты вводишь почту/пароль/2FA на экране Termux:X11;
+4. скрипт **сам видит момент входа**, сохраняет cookies, показывает «✓ Вход
+   сохранён» и закрывает окно. Возвращаться в терминал и жать Enter не надо.
+   X11-сервер гасится тоже сам.
+
+Флаги: `--force` — сразу видимое окно (сменить аккаунт), `--check` — только
+тихая проверка, без окна (код `0` — сессия жива, `10` — нужен вход).
+
+**То же самое одним тапом:** в Web-UI ⚙ → **«Войти в Google»**. Кнопка запускает
+ровно этот сценарий и показывает живой лог прямо в интерфейсе.
+
+### Дальше cookies обновляются сами
+
+Перед каждой загрузкой качалка проверяет возраст `cookies.txt`
+(`config.COOKIES_MAX_AGE_HOURS`, по умолчанию 12 ч). Если протухли — нативный
+Termux **сам** сходит в Debian headless и обновит их
+([`auth/bridge.py`](auth/bridge.py)). Ни окна, ни кнопки, ни команды.
+Отключить: `export TY_AUTO_PROOT=0`.
+
+---
+
+## Архитектура
+
+```
+┌───────────────── Android · Termux ─────────────────────┐
+│  НАТИВНО в Termux:                                      │
+│    Textual TUI ─┐                                       │
+│                 ├─► core/downloader (yt-dlp как lib)    │
+│    Web-UI ───────┘        │  progress hooks             │
+│    (web/server.py,        ▼                             │
+│     stdlib, 127.0.0.1)  ffmpeg ──► /storage/.../Music/  │
+│         │                 ▲                             │
+│         │                 │ cookies.txt (общий файл)     │
+│    auth/bridge ───────────┘  ← мост: сам ходит в proot   │
+│         │                                                │
+│  В proot-distro / Debian (браузер-слой, нужен РЕДКО):    │
+│    Playwright + системный ARM-Chromium                   │
+│      auth/login   видимое окно + автодетект входа        │
+│      auth/refresh headless, обновляет cookies            │
+└──────────────────────────────────────────────────────────┘
+```
+
+Принятые решения (почему так):
+| # | Решение | Выбор |
+|---|---|---|
+| 1 | Получение cookies | Браузер-слой. Видимое окно — только если сессия мертва; проверка и refresh идут тихо, **из нативного Termux через мост** |
+| 2 | Формат | TUI: AAC/m4a. Web: 3 реальных уровня (Opus ~160k / AAC 128k / ~50–64k) |
+| 4 | yt-dlp | Как **библиотека** (progress hooks, без парсинга текста) |
+| 5 | Дизайн | Премиум: AMOLED-чёрный, акцент iOS-blue, принципы iOS (GPU-анимации, пружины) |
+| 6 | Анти-бан | Джиттер старта + паузы между плейлистами + **адаптивный делёж потоков** |
+| 7 | Доставка кода | GitHub (`git pull`) |
+| 8 | Стек Web-UI | **stdlib** `http.server` — ноль зависимостей, тянет любой старый телефон |
+| 9 | Число команд | Установка = 1, вход = 1 (или тап), скачивание = тап по виджету |
+
+---
+
+## Структура
+
+```
+4K_video_downloader/
+├── main.py                 точка входа (tui | web | login | refresh | grab)
+├── config.py               пути и настройки (адаптируются Termux/desktop)
+├── core/
+│   └── downloader.py        ядро: probe, формат, загрузка, hooks, дедуп, медиаскан
+├── tui/
+│   ├── app.py               Textual-приложение
+│   └── app.tcss             премиум-тема (AMOLED)
+├── web/                     ── Web-UI (localhost, 100% on-device) ──
+│   ├── server.py            stdlib-сервер: очередь, SSE-прогресс, вход одной кнопкой
+│   └── static/
+│       ├── index.html       2 экрана: очередь ⇄ детали плейлиста
+│       ├── style.css        iOS-тема: AMOLED, сегменты, «созревающие» карточки
+│       └── app.js           SSE, keyed-DOM, drag-сегменты с резиной
+├── auth/
+│   ├── bridge.py            мост Termux ⇄ Debian: код сам ходит в браузер-слой
+│   ├── login.py             вход: тихая фаза → видимое окно с автодетектом
+│   ├── refresh.py           headless-обновление cookies + ensure_fresh_cookies()
+│   └── cookies_export.py    Playwright cookies → Netscape (cookies.txt)
+├── scripts/
+│   ├── setup-termux.sh      установка ЦЕЛИКОМ, одной командой
+│   ├── setup-debian.sh      браузер-слой в proot (зовётся автоматически)
+│   ├── login.sh             ВХОД ОДНОЙ КОМАНДОЙ (X11 + proot берёт на себя)
+│   ├── login-debian.sh      внутренняя часть входа (внутри Debian)
+│   ├── start-x11.sh         просто поднять экран X11 (для отладки)
+│   ├── start-web.sh         launcher Web-UI для Termux:Widget (wake-lock)
+│   └── install-nerdfont.sh  Nerd Font для иконок TUI
+├── requirements.txt
+└── .gitignore               cookies.txt / профиль / музыка — НЕ коммитятся
+```
 
 ---
 
@@ -188,7 +266,8 @@ python main.py web      # поднимет сервер и сам откроет
   сегмент-контрол с **тапом И drag-ом** (тянешь палец, на краях — резина),
   тактильные тапы. Прогресс «доплавляется» CSS между throttle-апдейтами.
 - 🔁 Загрузка **переживает закрытие вкладки** (состояние держит сервер, SSE).
-- 🔑 **Обновление cookies — авто, по времени, без кнопки** (вход 🔑 в ⚙ — редко).
+- 🔑 **Вход и обновление cookies — из самого UI**: refresh автоматический по
+  времени, а кнопка в ⚙ поднимает Termux:X11 и показывает форму Google.
 
 ### Параллелизм и анти-бан
 
@@ -204,21 +283,32 @@ python main.py web      # поднимет сервер и сам откроет
 и пауза 2–12с после полностью скачанного My Mix
 (`config.PLAYLIST_PAUSE_MIN/MAX`). Суммарно потоков **не больше слайдера**.
 
-### Иконка на домашнем экране (Termux:Widget)
+---
 
-1. Поставь APK **Termux:Widget** (с того же источника, что и Termux — F-Droid).
-2. Слинкуй launcher в папку ярлыков и сделай исполняемым:
-   ```bash
-   mkdir -p ~/.shortcuts
-   chmod +x ~/4K_video_downloader/scripts/start-web.sh
-   ln -sf ~/4K_video_downloader/scripts/start-web.sh ~/.shortcuts/TermuxYoutube
-   ```
-3. Добавь на домашний экран **виджет Termux:Widget** → тап по «TermuxYoutube»
-   поднимает сервер (с `wake-lock`) и открывает UI. Без единой команды.
+## Обновление
 
-> ⚠️ **Батарея.** Android (Doze) душит фоновые процессы. Один раз:
-> *Настройки → Приложения → Termux → Батарея → «Не оптимизировать / Unrestricted»*.
-> Иначе долгая загрузка может оборваться при гаснущем экране.
+```bash
+cd ~/4K_video_downloader
+git pull
+pip install -U yt-dlp          # YouTube ломает совместимость чаще всего именно тут
+```
+
+---
+
+## Если что-то пошло не так
+
+| Симптом | Причина и лечение |
+|---|---|
+| `Only images are available` / `Requested format is not available` | Нет JS-рантайма для n-challenge. `pkg install deno`, затем `pip install -U yt-dlp`. Первый запуск требует интернета — yt-dlp качает решатель EJS (`config.REMOTE_COMPONENTS`) |
+| Чёрный экран в Termux:X11 | Падает GL-инициализация Chromium. Лечится софт-рендером — уже включён (`config.CHROMIUM_ARGS`: `--use-gl=swiftshader`). **Не добавляй `--disable-gpu`** — он убивает процесс, в котором и живёт SwiftShader |
+| Google: «браузер не защищён / browser not secure» | Метка автоматизации. Уже скрыта (`--disable-blink-features=AutomationControlled` + `ignore_default_args=["--enable-automation"]`). Если всё равно — войди сначала на телефоне в обычном Chrome, потом повтори `bash scripts/login.sh` |
+| Окно Termux:X11 пустое / «не подключается» | Версия APK Termux:X11 не совпадает с пакетом `termux-x11-nightly`. Обнови оба до свежих сборок |
+| Приложение Termux:X11 не открылось само | Либо нет `am` (`pkg install termux-am`), либо Android 10+ запретил фоновый запуск — так бывает, когда вход нажат кнопкой в Web-UI и Termux в фоне. X11-сервер уже поднят: просто открой Termux:X11 из лаунчера, окно входа будет там. Чтобы открывалось само — выдай Termux разрешение «Поверх других приложений» |
+| `cookies.txt нет` / «вход не выполнен» | `bash scripts/login.sh` |
+| Загрузка обрывается при гаснущем экране | Doze. Отключи оптимизацию батареи для Termux (см. «Требования») |
+| Samsung Music не видит треки | Нет APK Termux:API или пакета `termux-api`. Поставь оба, проверь: `termux-media-scan -v <файл>` |
+| Chromium в proot падает | Самое ломкое звено (нужен только для входа). Проверь `apt install chromium` внутри Debian и флаг `--no-sandbox` |
+| Не хочу, чтобы качалка сама лезла в proot | `export TY_AUTO_PROOT=0` — вернётся ручное обновление cookies |
 
 ---
 
@@ -227,28 +317,25 @@ python main.py web      # поднимет сервер и сам откроет
 - ⚠️ **Аккаунт**: cookies = доступ к аккаунту. Не коммить `cookies.txt` (он в `.gitignore`).
   Качаешь свои плейлисты — риск низкий; держи человеческий темп (включён).
 - ⚠️ **Хрупкость**: YouTube меняет защиту → обновляй `pip install -U yt-dlp`.
-- ⚠️ **«Only images are available» / «Requested format is not available»**: YouTube
-  шифрует ссылки через JS (n-challenge). Нужен JS-рантайм (`pkg install deno`) — его
-  ставит `setup-termux.sh`. Решатель EJS yt-dlp качает с GitHub (через
-  `config.REMOTE_COMPONENTS`); первый запуск требует интернета для скачивания решателя.
-- ⚠️ **Chromium в proot** — самое ломкое звено (нужен только для входа); если падает,
-  проверь `--no-sandbox` и `apt install chromium`.
 - ⚖️ Скачивание нарушает ToS YouTube; контент чужой — для личного использования.
 
 ---
 
 ## Статус проверки
 
-Проверено на dev-машине (Windows, Python 3.10):
+Проверено на dev-машине (Windows/Linux, Python 3.10+):
 - ✅ Ядро: progress hooks, ffmpeg-извлечение аудио, выбор кодека, дедуп, теги (юниты + интеграция).
 - ✅ TUI: рендер, построение карточек, прогресс до `done` (Textual pilot).
 - ✅ Web-UI: старт сервера, отдача страницы/статики, SSE-поток, `probe` плейлиста,
-  endpoints настроек/добавления, guard path-traversal, формула адаптивного дележа.
+  endpoints настроек/добавления/входа, guard path-traversal, формула адаптивного дележа.
 - ✅ Конвертер cookies → Netscape.
+- ✅ Мост Termux⇄Debian: сборка proot-команды, коды возврата тихой фазы входа,
+  фоновый вход из web-UI со стримом лога.
 
 Работает на устройстве (подтверждено вживую):
 - ✅ Полный цикл на S23 Ultra: вход, My Mix, 4 параллельных загрузки, Samsung Music.
 - ✅ Запуск даже на слабом MediaTek Helio G88 (4+2 ГБ) — «как родной».
 
 Проверяется на устройстве (специфика, точечно):
+- ⏳ Установка одной командой и вход одной командой на чистом телефоне.
 - ⏳ Web-UI на S23: drag-сегменты/резина, бренд-цвета, медиаскан, Termux:Widget.
