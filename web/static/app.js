@@ -361,6 +361,15 @@ E("loginBtn").addEventListener("click", async () => {
   if (!r.ok) hint(r.msg || "вход не запустился", true);
 });
 
+// окружение отстало от кода (обновились через git pull, а зависимости — нет)
+function renderSetup() {
+  const s = state.setup || {};
+  const n = E("setupNote");
+  const show = s.ok === false && !!s.msg;
+  n.hidden = !show;
+  if (show) n.textContent = "⚠ " + s.msg;
+}
+
 function renderAuth() {
   const a = state.auth || {};
   const btn = E("loginBtn"), log = E("loginLog");
@@ -416,6 +425,7 @@ function applyState() {
   paintStreams();              // делёж/риск зависят от числа добавленных миксов
   renderGo();
   renderCookies();
+  renderSetup();
   renderAuth();
   if (detailId != null) renderDetail();
 }

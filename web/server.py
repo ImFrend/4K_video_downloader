@@ -78,6 +78,9 @@ class JobManager:
         self.cookies = {"status": "", "msg": ""}
         # состояние входа: idle | running | ok | error (+ хвост лога для UI)
         self.auth = {"state": "idle", "msg": "", "log": []}
+        # окружение против версии кода (после git pull зависимости могут отстать)
+        _setup_ok, _setup_msg = config.setup_is_current()
+        self.setup = {"ok": _setup_ok, "msg": _setup_msg}
         default_streams = config.WEB_PLAYLIST_CONCURRENCY * config.WEB_TRACKS_PER_PLAYLIST
         self.settings = {"platform": "android", "quality": "max", "streams": default_streams}
         self._refresh_cookie_status()
@@ -277,6 +280,7 @@ class JobManager:
                 "cookies": dict(self.cookies),
                 # list() — снимок хвоста лога: json.dumps идёт уже без блокировки
                 "auth": {**self.auth, "log": list(self.auth.get("log", []))},
+                "setup": dict(self.setup),
                 "max": config.WEB_MAX_PLAYLISTS,
                 "playlists": [self._job_json(j) for j in self.jobs],
             }

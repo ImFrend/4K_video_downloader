@@ -25,6 +25,7 @@ env/
 .python-version
 
 # Прочее
+.setup-stamp
 done.txt
 *.log
 .DS_Store
