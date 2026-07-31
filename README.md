@@ -299,7 +299,7 @@ pip install -U yt-dlp          # YouTube ломает совместимость
 
 | Симптом | Причина и лечение |
 |---|---|
-| `Only images are available` / `Requested format is not available` | Нет JS-рантайма для n-challenge. `pkg install deno`, затем `pip install -U yt-dlp`. Первый запуск требует интернета — yt-dlp качает решатель EJS (`config.REMOTE_COMPONENTS`) |
+| `Only images are available` / `Requested format is not available` | Сначала `pip install -U yt-dlp` и проверь JS-рантайм (`pkg install deno` — первый запуск качает решатель EJS, нужен интернет). Если не помогло, сравни: `yt-dlp -F <URL>` против `yt-dlp --extractor-args "youtube:player_client=…" -F <URL>`. Когда форматы есть только без `player_client` — значит пин клиентов в `config.YOUTUBE_PLAYER_CLIENTS` протух, верни `[]` (yt-dlp выберет сам). Именно это и случилось с `tv,ios,web_safari`: DRM-эксперимент на tv + PO-token на ios |
 | Чёрный экран в Termux:X11 | Падает GL-инициализация Chromium. Лечится софт-рендером — уже включён (`config.CHROMIUM_ARGS`: `--use-gl=swiftshader`). **Не добавляй `--disable-gpu`** — он убивает процесс, в котором и живёт SwiftShader |
 | Google: «браузер не защищён / browser not secure» | Метка автоматизации. Уже скрыта (`--disable-blink-features=AutomationControlled` + `ignore_default_args=["--enable-automation"]`). Если всё равно — войди сначала на телефоне в обычном Chrome, потом повтори `bash scripts/login.sh` |
 | Окно Termux:X11 пустое / «не подключается» | Версия APK Termux:X11 не совпадает с пакетом `termux-x11-nightly`. Обнови оба до свежих сборок |
