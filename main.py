@@ -7,6 +7,7 @@ TermuxYoutube — точка входа.
   python main.py login      вход в Google — одной командой, окно откроется,
                             только если сохранённая сессия уже мертва
   python main.py refresh    обновить cookies (сам сходит в браузер-слой)
+  python main.py doctor     проверить зависимости: что стоит, чего не хватает
   python main.py grab URL   скачать без TUI (CLI-режим, для отладки)
 """
 from __future__ import annotations
@@ -18,12 +19,41 @@ def _usage() -> None:
     print(__doc__)
 
 
+def _warn_stale_setup() -> None:
+    """Код приезжает через git pull, а зависимости — нет. Скажем об этом вслух."""
+    try:
+        import config
+        ok, msg = config.setup_is_current()
+        if not ok:
+            print(f"⚠  {msg}\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _doctor() -> int:
+    import subprocess
+
+    import config
+    script = config.ROOT / "scripts" / "doctor.sh"
+    if config.IS_TERMUX and script.exists():
+        return subprocess.call(["bash", str(script), *sys.argv[2:]])
+    # на десктопе полной проверки нет — она про пакеты телефона
+    ok, msg = config.setup_is_current()
+    print("✓  окружение соответствует версии кода" if ok else f"⚠  {msg}")
+    return 0 if ok else 1
+
+
 def main() -> int:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "tui"
 
     if cmd in ("-h", "--help", "help"):
         _usage()
         return 0
+
+    if cmd == "doctor":
+        return _doctor()
+
+    _warn_stale_setup()
 
     if cmd == "login":
         # на телефоне это scripts/login.sh (X11 + proot берёт на себя он),

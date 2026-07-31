@@ -200,3 +200,41 @@ OUTPUT_TEMPLATE_SINGLE = "%(title)s.%(ext)s"
 
 def have_cookies() -> bool:
     return COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 0
+
+
+# ── Версия набора зависимостей ──
+# Поднимается КАЖДЫЙ раз, когда setup-termux.sh начинает ставить что-то новое
+# (пакет, пакет в Debian, модуль pip). Установщик записывает это число в
+# .setup-stamp.
+#
+# Зачем: код приезжает через `git pull`, а зависимости — нет. Человек с прошлой
+# установки получает новый код поверх старого окружения и ловит невнятную ошибку
+# где-то в середине работы. Теперь расхождение видно сразу и чинится повторным
+# запуском установщика.
+#
+# История: v1 — исходный набор; v2 — termux-am и termux-x11-nightly (нужны
+# автозапуску Termux:X11 при входе; раньше ставились на лету посреди входа).
+SETUP_VERSION = 2
+SETUP_STAMP = ROOT / ".setup-stamp"
+
+
+def setup_stamp_version() -> int:
+    """Какая версия зависимостей реально установлена. 0 — отметки нет."""
+    try:
+        return int(SETUP_STAMP.read_text(encoding="utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
+def setup_is_current() -> tuple[bool, str]:
+    """(всё ли на месте, что сказать человеку). Никогда не падает."""
+    if not IS_TERMUX:
+        return True, ""      # речь про пакеты телефона — на десктопе проверять нечего
+    have = setup_stamp_version()
+    if have >= SETUP_VERSION:
+        return True, ""
+    if have == 0:
+        return False, ("не вижу отметки установщика — окружение могло остаться "
+                       "от прошлой версии: bash scripts/setup-termux.sh")
+    return False, (f"код новее окружения (зависимости v{have}, нужна v{SETUP_VERSION}) "
+                   f"— обнови: bash scripts/setup-termux.sh")

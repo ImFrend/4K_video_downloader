@@ -91,7 +91,7 @@ bash scripts/setup-termux.sh --no-browser
 | Termux, `pkg` | `python` `ffmpeg` `git` `termux-api` `python-pip` | ядро качалки, извлечение аудио, медиаскан |
 | Termux, `pkg` | `deno` (или `nodejs`) | JS-рантайм для n-challenge YouTube — **без него «Only images are available»** |
 | Termux, `pkg` | `proot-distro` | контейнер Debian под браузер |
-| Termux, `pkg` | `x11-repo` `termux-x11-nightly` `termux-am` | экран и автозапуск Termux:X11 (ставятся при первом входе) |
+| Termux, `pkg` | `x11-repo` `termux-x11-nightly` `termux-am` | экран и автозапуск Termux:X11 для окна входа |
 | Termux, `pip` | `yt-dlp` `textual` `rich` | загрузка, TUI |
 | Debian, `apt` | `chromium` `ffmpeg` `python3` `python3-pip` | ARM-браузер для входа в Google |
 | Debian, `apt` | `fonts-liberation` `ca-certificates` | шрифты и TLS в Chromium |
@@ -116,6 +116,7 @@ python main.py                 # TUI: вставь ссылку на плейл�
 python main.py web             # Web-UI на localhost (браузер телефона)
 python main.py login           # вход в Google (см. ниже — обычно не нужен)
 python main.py refresh         # обновить cookies вручную (обычно не нужно)
+python main.py doctor          # что стоит, чего не хватает и чем чинить
 python main.py grab <URL>      # без интерфейса (отладка)
 ```
 
@@ -229,6 +230,7 @@ Termux **сам** сходит в Debian headless и обновит их
 │   └── cookies_export.py    Playwright cookies → Netscape (cookies.txt)
 ├── scripts/
 │   ├── setup-termux.sh      установка ЦЕЛИКОМ, одной командой
+│   ├── doctor.sh            проверка зависимостей: что стоит, чего нет, чем чинить
 │   ├── setup-debian.sh      браузер-слой в proot (зовётся автоматически)
 │   ├── login.sh             ВХОД ОДНОЙ КОМАНДОЙ (X11 + proot берёт на себя)
 │   ├── login-debian.sh      внутренняя часть входа (внутри Debian)
@@ -290,15 +292,56 @@ python main.py web      # поднимет сервер и сам откроет
 ```bash
 cd ~/4K_video_downloader
 git pull
-pip install -U yt-dlp          # YouTube ломает совместимость чаще всего именно тут
+bash scripts/doctor.sh         # чего не хватает после обновления
 ```
+
+### Код обновился, а зависимости — нет
+
+`git pull` приносит **только код**. Пакеты, Debian-слой и Python-модули остаются
+от прошлой установки, и если новый код рассчитывает на что-то новое, это вылезет
+невнятной ошибкой где-нибудь в середине работы.
+
+Чтобы такого не было, у набора зависимостей есть **версия**
+(`config.SETUP_VERSION`). Установщик записывает её в `.setup-stamp`, а программа
+при запуске сверяет — и если окружение отстало, честно об этом говорит:
+
+```
+⚠  код новее окружения (зависимости v1, нужна v2) — обнови: bash scripts/setup-termux.sh
+```
+
+Та же строка появляется в Web-UI (⚙ → сверху жёлтым). Лечится повторным запуском
+установщика — он **идемпотентный**, уже поставленное не ломает и не переставляет:
+
+```bash
+bash scripts/setup-termux.sh
+```
+
+**Отдельно про yt-dlp:** YouTube ломает совместимость чаще всего именно там, и
+это не связано с версией набора. Если посыпались ошибки форматов — первым делом
+`pip install -U yt-dlp`.
+
+### Диагностика
+
+```bash
+bash scripts/doctor.sh          # полная проверка (заходит и в Debian, ~15с)
+bash scripts/doctor.sh --quick  # без захода в Debian
+```
+
+Проверяет пакеты Termux, Python-модули (и печатает версию yt-dlp), наличие
+APK, доступ к памяти, Chromium с Playwright внутри Debian, версию окружения и
+состояние входа. Для каждой проблемы печатает готовую команду. Код возврата
+`0` — всё на месте, `1` — есть чего чинить.
 
 ---
 
 ## Если что-то пошло не так
 
+> Быстрее всего начать с `bash scripts/doctor.sh` — он проверит всё разом и
+> напечатает готовые команды. Таблица ниже — для случаев, где нужна причина.
+
 | Симптом | Причина и лечение |
 |---|---|
+| Странная ошибка после `git pull`; «у друга не работает» | Окружение отстало от кода: пакеты и Debian-слой `git pull` не обновляет. `bash scripts/doctor.sh`, затем `bash scripts/setup-termux.sh` (он идемпотентный) |
 | `Only images are available` / `Requested format is not available` | Сначала `pip install -U yt-dlp` и проверь JS-рантайм (`pkg install deno` — первый запуск качает решатель EJS, нужен интернет). Если не помогло, сравни: `yt-dlp -F <URL>` против `yt-dlp --extractor-args "youtube:player_client=…" -F <URL>`. Когда форматы есть только без `player_client` — значит пин клиентов в `config.YOUTUBE_PLAYER_CLIENTS` протух, верни `[]` (yt-dlp выберет сам). Именно это и случилось с `tv,ios,web_safari`: DRM-эксперимент на tv + PO-token на ios |
 | Чёрный экран в Termux:X11 | Падает GL-инициализация Chromium. Лечится софт-рендером — уже включён (`config.CHROMIUM_ARGS`: `--use-gl=swiftshader`). **Не добавляй `--disable-gpu`** — он убивает процесс, в котором и живёт SwiftShader |
 | Google: «браузер не защищён / browser not secure» | Метка автоматизации. Уже скрыта (`--disable-blink-features=AutomationControlled` + `ignore_default_args=["--enable-automation"]`). Если всё равно — войди сначала на телефоне в обычном Chrome, потом повтори `bash scripts/login.sh` |
