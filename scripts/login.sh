@@ -153,15 +153,26 @@ say "   Возвращаться сюда не надо: как только в�
 # вход нажат из браузера, а Termux в фоне). Сервер X11 при этом уже поднят.
 say "   Если экран Termux:X11 не открылся сам — открой его из лаунчера."
 say ""
+# Успех меряем по факту — переписан ли cookies.txt. Код возврата тут ненадёжен:
+# proot гасит сессию вместе с фоновыми процессами окна и может отдать своё
+# значение, из-за чего успешный вход раньше рапортовал «не завершён».
+ck_mtime() {
+    [ -e "$DIR/cookies.txt" ] || { echo 0; return 0; }
+    stat -c %Y "$DIR/cookies.txt" 2>/dev/null || echo 0
+}
+before="$(ck_mtime)"
+
 # --force внутри: тихую фазу уже отработали выше, второй раз Chromium не поднимаем.
 in_debian x11 "DISPLAY=:0 bash scripts/login-debian.sh --force"
 rc=$?
+after="$(ck_mtime)"
 
 say ""
-if [ "$rc" = "0" ] && [ -s "$DIR/cookies.txt" ]; then
+if [ -s "$DIR/cookies.txt" ] && [ "$after" != "$before" ]; then
     say "✓ Готово — вход сохранён. Приватные плейлисты и My Mix доступны."
     say "  Дальше cookies обновляются сами; эта команда понадобится не скоро."
-else
-    say "!! Вход не завершён (код $rc). Повтори:  bash scripts/login.sh --force"
+    [ "$rc" = "0" ] || say "  (proot вернул код $rc — на результат это не влияет)"
+    exit 0
 fi
-exit "$rc"
+say "!! Вход не завершён (код $rc). Повтори:  bash scripts/login.sh --force"
+exit 1
