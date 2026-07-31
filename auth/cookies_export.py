@@ -6,6 +6,7 @@ Playwright отдаёт cookies как список dict'ов; yt-dlp хочет
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -50,8 +51,16 @@ def cookies_to_netscape(cookies: Iterable[dict]) -> str:
 
 
 def write_cookies_file(cookies: Iterable[dict], path: Path) -> int:
-    """Пишет cookies.txt. Возвращает число записанных cookies."""
+    """
+    Пишет cookies.txt атомарно. Возвращает число записанных cookies.
+
+    Через временный файл + os.replace: качалка может читать cookies.txt в любой
+    момент, и обычная запись «обрезать и налить» дала бы ей наполовину готовый
+    файл — yt-dlp на это отвечает «does not look like a Netscape format».
+    """
     cookies = list(cookies)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(cookies_to_netscape(cookies), encoding="utf-8")
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(cookies_to_netscape(cookies), encoding="utf-8")
+    os.replace(tmp, path)      # атомарная подмена в пределах одной ФС
     return len(cookies)

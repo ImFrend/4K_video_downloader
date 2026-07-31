@@ -16,9 +16,12 @@
 """
 from __future__ import annotations
 
+import contextlib
+import os
 import random
 import re
 import subprocess
+import tempfile
 import threading
 import time
 import unicodedata
@@ -85,8 +88,7 @@ class DownloadManager:
             "socket_timeout": 30,   # не висеть вечно на сетевом запросе
             "retries": 3,
         }
-        if self.cookies:
-            opts["cookiefile"] = str(self.cookies)
+        # cookiefile здесь НЕ ставим — его выдаёт _ydl(), каждому вызову свою копию
         if config.YOUTUBE_PLAYER_CLIENTS:
             opts["extractor_args"] = {
                 "youtube": {"player_client": list(config.YOUTUBE_PLAYER_CLIENTS)}
@@ -95,6 +97,37 @@ class DownloadManager:
             # разрешить yt-dlp скачать EJS-решатель JS-challenge (n-sig)
             opts["remote_components"] = list(config.REMOTE_COMPONENTS)
         return opts
+
+    @contextlib.contextmanager
+    def _ydl(self, opts: dict):
+        """YoutubeDL с ПРИВАТНОЙ копией cookies.
+
+        yt-dlp при закрытии пишет cookiefile обратно на диск. Один общий файл на
+        4-8 параллельных воркеров означает, что кто-то читает его ровно в момент,
+        когда другой обрезал его под запись: «does not look like a Netscape format
+        cookies file», а следом отвал авторизации на середине очереди.
+
+        Поэтому каждому вызову — одноразовая копия, а cookies.txt (его пишет
+        только auth-слой) не отдаём yt-dlp вообще.
+        """
+        tmp: Optional[str] = None
+        if self.cookies:
+            try:
+                fd, tmp = tempfile.mkstemp(prefix="ty-ck-", suffix=".txt")
+                with os.fdopen(fd, "wb") as dst:      # mkstemp даёт режим 600
+                    dst.write(Path(self.cookies).read_bytes())
+                opts = opts | {"cookiefile": tmp}
+            except OSError:
+                # не смогли скопировать — лучше без cookies, чем порвать оригинал
+                if tmp:
+                    _unlink_quiet(tmp)
+                    tmp = None
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                yield ydl
+        finally:
+            if tmp:
+                _unlink_quiet(tmp)
 
     @staticmethod
     def _resolve_url(track: Track) -> str:
@@ -140,7 +173,7 @@ class DownloadManager:
         if limit:
             opts["playlistend"] = limit
 
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with self._ydl(opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
         tracks: list[Track] = []
@@ -244,7 +277,7 @@ class DownloadManager:
             opts["postprocessor_args"] = {"metadata": meta_args}
 
         try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
+            with self._ydl(opts) as ydl:
                 res = ydl.extract_info(dl_url, download=True)
             track.filepath = _final_path(res)
             if isinstance(res, dict):
@@ -340,6 +373,15 @@ class DownloadManager:
                     on_sleep(pause)
                 _interruptible_sleep(pause, lambda: self._cancelled)
         _media_scan_dir(folder)  # финальный рекурсивный скан папки
+
+
+# ──────────────────────────── мелочь ────────────────────────────
+def _unlink_quiet(path: str) -> None:
+    """Удалить временный файл, не роняя загрузку, если он уже исчез."""
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
 
 
 # ──────────────────────────── обложки ────────────────────────────
