@@ -258,6 +258,11 @@ class DownloadManager:
             "progress_hooks": [hook],
             "writethumbnail": True,
             "postprocessors": [
+                # YouTube отдаёт обложки в webp, а контейнер m4a принимает
+                # только jpg/png — без конверсии ffmpeg спотыкается на
+                # «Unable to embed» и роняет весь трек из-за картинки.
+                {"key": "FFmpegThumbnailsConvertor", "format": "jpg",
+                 "when": "before_dl"},
                 {"key": "FFmpegExtractAudio",
                  "preferredcodec": codec,
                  "preferredquality": config.AUDIO_QUALITY},
@@ -277,8 +282,17 @@ class DownloadManager:
             opts["postprocessor_args"] = {"metadata": meta_args}
 
         try:
-            with self._ydl(opts) as ydl:
-                res = ydl.extract_info(dl_url, download=True)
+            try:
+                with self._ydl(opts) as ydl:
+                    res = ydl.extract_info(dl_url, download=True)
+            except Exception as ex:  # noqa: BLE001
+                if not _is_embed_error(ex):
+                    raise
+                # Обложку вшить не вышло — но аудио важнее картинки. Повторяем
+                # без встраивания, чтобы не потерять трек целиком (редкий случай:
+                # один лишний прогон, зато очередь не теряет песню).
+                with self._ydl(_without_cover(opts)) as ydl:
+                    res = ydl.extract_info(dl_url, download=True)
             track.filepath = _final_path(res)
             if isinstance(res, dict):
                 track.duration = track.duration or res.get("duration")
@@ -376,6 +390,18 @@ class DownloadManager:
 
 
 # ──────────────────────────── мелочь ────────────────────────────
+def _is_embed_error(ex: Exception) -> bool:
+    """Подвела только обложка: аудио на этот момент уже скачано и сконвертировано."""
+    return "unable to embed" in str(ex).lower()
+
+
+def _without_cover(opts: dict) -> dict:
+    """Те же настройки, но без обложки — запасной заход, чтобы не терять трек."""
+    keep = [p for p in opts.get("postprocessors", [])
+            if p.get("key") not in ("EmbedThumbnail", "FFmpegThumbnailsConvertor")]
+    return opts | {"postprocessors": keep, "writethumbnail": False}
+
+
 def _unlink_quiet(path: str) -> None:
     """Удалить временный файл, не роняя загрузку, если он уже исчез."""
     try:
