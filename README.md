@@ -57,16 +57,18 @@ Widget) просто не смогут общаться с Termux.
 | APK | Зачем | Где взять |
 |---|---|---|
 | **Termux** | сам терминал | [F-Droid](https://f-droid.org/packages/com.termux/) |
-| **Termux:X11** | экран для окна входа в Google | [github.com/termux/termux-x11](https://github.com/termux/termux-x11/releases) |
 | **Termux:API** | `termux-media-scan`, wake-lock, буфер обмена | [F-Droid](https://f-droid.org/packages/com.termux.api/) |
 | **Termux:Widget** | иконка запуска на домашнем экране | [F-Droid](https://f-droid.org/packages/com.termux.widget/) |
+| **Kiwi Browser** | *для приватных плейлистов*: держит расширения Chrome, отдаёт cookies качалке одним тапом | Google Play |
+| **Termux:X11** | *только если* ставишь тяжёлый браузер-слой (`--with-browser`) | [github.com/termux/termux-x11](https://github.com/termux/termux-x11/releases) |
 
 > ⚠️ Версия из **Google Play устарела** и не обновляется — она не подойдёт.
 
 ### 2. Место и питание
 
-- **~2.5 ГБ свободно**: Debian-контейнер + ARM-Chromium ≈ 1.5–2 ГБ, остальное —
-  Python-пакеты и кэш. Сама музыка — сверх этого.
+- **~300 МБ свободно** для обычной установки. Тяжёлый браузер-слой
+  (`--with-browser`, обычно не нужен) добавит ещё ~2 ГБ: Debian-контейнер плюс
+  ARM-Chromium. Сама музыка — сверх этого.
 - **Отключить оптимизацию батареи для Termux**:
   *Настройки → Приложения → Termux → Батарея → «Не оптимизировать / Unrestricted»*.
   Иначе Android (Doze) прибьёт долгую загрузку при гаснущем экране.
@@ -84,21 +86,23 @@ cd 4K_video_downloader
 bash scripts/setup-termux.sh
 ```
 
-`setup-termux.sh` делает **всё** сам, заходить в proot руками не надо:
+Ставится только нужное — **пара минут, ~300 МБ**:
 
 1. обновляет пакеты Termux;
 2. ставит нативную часть (python, ffmpeg, git, termux-api, deno);
 3. просит разрешение на память телефона (`termux-setup-storage`);
 4. ставит Python-зависимости качалки (yt-dlp, textual, rich);
-5. кладёт ярлыки в `~/.shortcuts` для Termux:Widget;
-6. ставит `proot-distro` + Debian;
-7. **сам заходит в Debian** и ставит там браузер-слой (Playwright + ARM-Chromium).
+5. кладёт ярлыки в `~/.shortcuts` для Termux:Widget.
 
-Шаг 7 долгий (apt + Chromium, десятки минут на слабой сети). Если браузер-слой
-не нужен (качаешь только публичное) — пропусти его:
+**Приватные плейлисты и My Mix при этом работают** — cookies приезжают из
+браузера телефона одним тапом (см. ниже). Ни Debian, ни Chromium, ни X11 для
+этого не нужны.
+
+Тяжёлый браузер-слой нужен только тем, кто хочет входить в Google **через окно
+на Termux:X11**, не пользуясь браузером телефона. Это +2 ГБ и десятки минут:
 
 ```bash
-bash scripts/setup-termux.sh --no-browser
+bash scripts/setup-termux.sh --with-browser
 ```
 
 Скрипт **идемпотентный**: если что-то отвалилось (сеть, место) — просто запусти
@@ -110,9 +114,10 @@ bash scripts/setup-termux.sh --no-browser
 |---|---|---|
 | Termux, `pkg` | `python` `ffmpeg` `git` `termux-api` `python-pip` | ядро качалки, извлечение аудио, медиаскан |
 | Termux, `pkg` | `deno` (или `nodejs`) | JS-рантайм для n-challenge YouTube — **без него «Only images are available»** |
+| Termux, `pip` | `yt-dlp` `textual` `rich` | загрузка, TUI |
+| *только `--with-browser`* | | |
 | Termux, `pkg` | `proot-distro` | контейнер Debian под браузер |
 | Termux, `pkg` | `x11-repo` `termux-x11-nightly` `termux-am` | экран и автозапуск Termux:X11 для окна входа |
-| Termux, `pip` | `yt-dlp` `textual` `rich` | загрузка, TUI |
 | Debian, `apt` | `chromium` `ffmpeg` `python3` `python3-pip` | ARM-браузер для входа в Google |
 | Debian, `apt` | `fonts-liberation` `ca-certificates` | шрифты и TLS в Chromium |
 | Debian, `apt` | `matchbox-window-manager` `matchbox-keyboard` | окно и экранная клавиатура в X11 |

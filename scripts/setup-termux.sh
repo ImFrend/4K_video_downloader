@@ -1,34 +1,40 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# УСТАНОВКА ЦЕЛИКОМ — ОДНОЙ КОМАНДОЙ.     bash scripts/setup-termux.sh
+# УСТАНОВКА — ОДНОЙ КОМАНДОЙ.     bash scripts/setup-termux.sh
 #
-# Ставит и нативную часть (качалка, TUI, Web-UI), и браузер-слой в Debian,
-# и ярлыки на домашний экран. Раньше между шагами надо было руками заходить
-# в proot (login/cd/exit) и руками линковать shortcuts — теперь нет.
+# По умолчанию ставит только НУЖНОЕ: качалку, TUI и Web-UI. Это ~300 МБ и пара
+# минут. Приватные плейлисты при этом работают — cookies приезжают из твоего
+# браузера (расширение для Kiwi, python main.py kiwi).
 #
-# Флаги:
-#   --no-browser   не трогать Debian-слой (только качалка публичных плейлистов)
+# Тяжёлый браузер-слой (proot + Debian + ARM-Chromium + Playwright, ~2 ГБ и
+# десятки минут) нужен ТОЛЬКО если хочешь входить в Google через окно на
+# Termux:X11, не пользуясь браузером телефона:
+#
+#   bash scripts/setup-termux.sh --with-browser
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
 DIR="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 DISTRO="${TY_PROOT_DISTRO:-debian}"
 MOUNT="/root/$(basename "$DIR")"
-WITH_BROWSER=1
-[ "${1:-}" = "--no-browser" ] && WITH_BROWSER=0
+WITH_BROWSER=0
+case "${1:-}" in
+    --with-browser) WITH_BROWSER=1 ;;
+    --no-browser)   WITH_BROWSER=0 ;;   # прежнее имя флага, оставлено для совместимости
+esac
 
-echo ">> [1/7] Обновление пакетов Termux"
+echo ">> [1/5] Обновление пакетов Termux"
 pkg update -y && pkg upgrade -y
 
-echo ">> [2/7] Базовые пакеты (python, ffmpeg, git, termux-api)"
+echo ">> [2/5] Базовые пакеты (python, ffmpeg, git, termux-api)"
 # termux-api нужен для termux-media-scan (Samsung Music видит треки сразу).
 # Дополнительно поставь APK "Termux:API" из F-Droid/того же источника, что Termux.
 pkg install -y python ffmpeg git termux-api
 
-echo ">> [3/7] Доступ к памяти телефона (для папки с музыкой)"
+echo ">> [3/5] Доступ к памяти телефона (для папки с музыкой)"
 termux-setup-storage || echo "   (пропущено — дай разрешение вручную при запросе)"
 
-echo ">> [4/7] Python-зависимости ядра и TUI"
+echo ">> [4/5] Python-зависимости ядра и TUI"
 # ВАЖНО: на Termux НЕЛЬЗЯ обновлять сам pip (сломает пакет python-pip).
 # Обновляем pip только через системный пакет, не через pip.
 pkg install -y python-pip || true
@@ -36,11 +42,11 @@ pip install --upgrade yt-dlp textual rich
 
 # JS-движок: YouTube шифрует ссылки через JS (n-challenge). Без рантайма
 # yt-dlp выдаёт "Only images are available". deno — рекомендованный для EJS.
-echo ">> [4b/7] JS-движок для обхода n-challenge YouTube"
+echo ">> [4b/5] JS-движок для обхода n-challenge YouTube"
 pkg install -y deno || pkg install -y nodejs || \
     echo "   !! поставь вручную: pkg install deno (или nodejs)"
 
-echo ">> [5/8] Ярлыки на домашний экран (Termux:Widget)"
+echo ">> [5/5] Ярлыки на домашний экран (Termux:Widget)"
 chmod +x "$DIR"/scripts/*.sh 2>/dev/null || true
 mkdir -p ~/.shortcuts && chmod 700 ~/.shortcuts
 ln -sf "$DIR/scripts/start-web.sh" ~/.shortcuts/TermuxYoutube
@@ -63,22 +69,42 @@ stamp() {
 }
 
 if [ "$WITH_BROWSER" = "0" ]; then
-    echo ">> [6/8] X11 и браузер-слой пропущены (--no-browser)"
     stamp
-    echo ""
-    echo " Запуск:  python main.py web   (или тап по виджету TermuxYoutube)"
-    echo " Проверка зависимостей:  bash scripts/doctor.sh"
+    cat <<'EOF'
+
+============================================================
+ Готово. Заняло минуты, а не десятки минут.
+
+ Запуск:
+     python main.py web        Web-UI в браузере телефона
+     python main.py            TUI в терминале
+     тап по виджету «TermuxYoutube» — то же самое, без команд
+
+ Приватные плейлисты и My Mix — cookies из твоего браузера:
+     python main.py kiwi       собрать расширение для Kiwi
+   (поставить .zip в Kiwi, открыть YouTube, тапнуть иконку —
+    cookies уедут сами. Заодно миксы будут ровно те, что видно
+    в браузере: состав микса определяется сессией cookies.)
+
+ Вместо расширения можно файлом:  python main.py cookies
+
+ Вход через окно на Termux:X11 (тяжело, ~2 ГБ, обычно не нужен):
+     bash scripts/setup-termux.sh --with-browser
+
+ Проверка зависимостей:  bash scripts/doctor.sh
+============================================================
+EOF
     exit 0
 fi
 
-echo ">> [6/8] Экран для входа (termux-x11 + am)"
+echo ">> [5/7] Экран для входа (termux-x11 + am)"
 # Ставим ЗАРАНЕЕ: раньше это доустанавливалось на лету посреди входа — человек
 # ждал загрузки пакетов там, где ожидал увидеть форму Google.
 pkg install -y x11-repo >/dev/null 2>&1
 pkg install -y termux-x11-nightly || echo "   (termux-x11 не встал — проверь APK «Termux:X11»)"
 pkg install -y termux-am || echo "   (termux-am не встал — Termux:X11 придётся открывать руками)"
 
-echo ">> [7/8] proot-distro + $DISTRO (для браузер-слоя авторизации)"
+echo ">> [6/7] proot-distro + $DISTRO (для браузер-слоя авторизации)"
 pkg install -y proot-distro
 # путь к rootfs зависит от версии proot-distro (5.x: containers/, ≤4.x:
 # installed-rootfs/) — не гадаем, спрашиваем его самого. -q = только имена.
@@ -88,7 +114,7 @@ else
     proot-distro install "$DISTRO" || echo "   ($DISTRO уже установлен либо не встал — проверю на следующем шаге)"
 fi
 
-echo ">> [8/8] Браузер-слой внутри $DISTRO (Playwright + ARM-Chromium)"
+echo ">> [7/7] Браузер-слой внутри $DISTRO (Playwright + ARM-Chromium)"
 echo "   Это долгий шаг (apt + chromium). Заходить в proot руками не надо."
 BROWSER_OK=1
 proot-distro login "$DISTRO" --bind "$DIR:$MOUNT" -- \
