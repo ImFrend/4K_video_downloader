@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Иконка приложения: синий градиент бренда + белая пара восьмых.
+       Полная заливка фона — чтобы maskable-маска Android резала без белых углов. -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2ea0ff"/>
+      <stop offset="1" stop-color="#0a6fe0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#g)"/>
+  <g fill="#fff">
+    <polygon points="198,150 364,122 364,158 198,186"/>
+    <rect x="186" y="168" width="14" height="176"/>
+    <rect x="350" y="140" width="14" height="176"/>
+    <ellipse cx="166" cy="348" rx="36" ry="26" transform="rotate(-18 166 348)"/>
+    <ellipse cx="330" cy="320" rx="36" ry="26" transform="rotate(-18 330 320)"/>
+  </g>
+</svg>

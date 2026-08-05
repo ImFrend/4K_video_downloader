@@ -4,11 +4,17 @@
 
 const E = (id) => document.getElementById(id);
 const api = async (path, body) => {
-  const r = await fetch(path, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  return r.json();
+  // сервер может внезапно умереть (Termux убит, wake-lock снят) — кнопки не должны
+  // молча «не работать»: любой сбой сети превращаем в честный ответ с текстом
+  try {
+    const r = await fetch(path, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    return await r.json();
+  } catch (_) {
+    return { ok: false, msg: "нет связи с сервером — запусти его заново" };
+  }
 };
 
 let state = null;
@@ -222,6 +228,7 @@ function updateCard(n, p) {
   else if (p.status === "downloading") { sub = `${p.done} / ${p.total}`; st = "⟳"; }
   else if (p.status === "done") { sub = `готово · ${p.total}`; st = "✓"; cls += " done"; }
   else if (p.status === "error") { sub = p.error || "ошибка"; st = "✕"; cls += " err"; }
+  if (st === "⟳") cls += " spin";        // «шестерёнка» статуса крутится (GPU)
   r.sub.textContent = sub;
   r.status.textContent = st;
   r.status.className = cls;
@@ -231,6 +238,9 @@ function updateCard(n, p) {
   r.mini.style.display = showBar ? "" : "none";
   r.bar.style.transform = `scaleX(${ratio})`;
   tintCard(n.el, ratio, p.status);
+  // классы состояния → CSS-жизнь: блик по бару при загрузке, «дыхание» при анализе
+  n.el.classList.toggle("dl", p.status === "downloading");
+  n.el.classList.toggle("probing", p.status === "probing");
 
   // убрать можно, пока не идёт общая загрузка
   r.rm.style.display = state && state.running ? "none" : "";
@@ -240,7 +250,12 @@ function renderQueue() {
   const ul = E("queue");
   const pls = state.playlists || [];
   if (!pls.length) {
-    if (!ul.querySelector(".empty")) ul.innerHTML = `<div class="empty">Пусто — вставь ссылку на плейлист сверху</div>`;
+    if (!ul.querySelector(".empty")) ul.innerHTML = `
+      <div class="empty">
+        <div class="empty-ic">🎵</div>
+        <div class="empty-t">Очередь пуста</div>
+        <div class="empty-s">Вставь ссылку на плейлист, My Mix<br>или список видео</div>
+      </div>`;
     cards.clear();
     E("queueCount").textContent = "";
     return;
@@ -253,7 +268,13 @@ function renderQueue() {
     if (!n) { n = makeCard(p); cards.set(p.id, n); ul.appendChild(n.el); }
     updateCard(n, p);
   }
-  for (const [id, n] of cards) if (!seen.has(id)) { n.el.remove(); cards.delete(id); }
+  // удалённая карточка уезжает мягко (CSS .leave), а не исчезает рывком
+  for (const [id, n] of cards) if (!seen.has(id)) {
+    cards.delete(id);
+    const el = n.el;
+    el.classList.add("leave");
+    setTimeout(() => el.remove(), 240);
+  }
 
   const active = pls.filter((p) => p.status !== "error").length;
   E("queueCount").textContent = `${active}/${state.max}`;
@@ -308,7 +329,8 @@ function updateTrack(n, t) {
   else if (t.status === "queued") meta = "в очереди";
   r.meta.textContent = meta;
   r.ic.textContent = TRK_IC[t.status] || "·";
-  r.ic.className = "trk-ic" + (t.status === "done" ? " done" : t.status === "error" ? " err" : t.status === "downloading" ? " dl" : "");
+  r.ic.className = "trk-ic" + (t.status === "done" ? " done" : t.status === "error" ? " err"
+    : t.status === "downloading" ? " dl" : t.status === "converting" ? " cv" : "");
 }
 function renderDetail() {
   if (detailId == null) return;
@@ -386,16 +408,60 @@ function renderAuth() {
   log.className = "log" + (a.state === "error" ? " err" : a.state === "ok" ? " ok" : "");
 }
 
-E("gearBtn").addEventListener("click", () => { E("sheet").hidden = false; });
-const closeSheet = () => { E("sheet").hidden = true; };
+// лист: открытие/закрытие с анимацией + свайп вниз за полоску (как в iOS)
+const sheetWrap = E("sheet");
+const sheetEl = sheetWrap.querySelector(".sheet");
+const sheetGrip = sheetWrap.querySelector(".sheet-grip");
+let sheetCloseT = null;
+
+function openSheet() {
+  clearTimeout(sheetCloseT);
+  sheetWrap.classList.remove("closing");
+  sheetEl.style.transform = ""; E("sheetBg").style.opacity = "";
+  sheetWrap.hidden = false;
+}
+function closeSheet() {
+  if (sheetWrap.hidden) return;
+  sheetWrap.classList.add("closing");            // CSS доигрывает уезд вниз
+  clearTimeout(sheetCloseT);
+  sheetCloseT = setTimeout(() => {
+    sheetWrap.hidden = true;
+    sheetWrap.classList.remove("closing");
+    sheetEl.style.transform = ""; E("sheetBg").style.opacity = "";
+  }, 300);
+}
+E("gearBtn").addEventListener("click", openSheet);
 E("sheetClose").addEventListener("click", closeSheet);
 E("sheetBg").addEventListener("click", closeSheet);
+
+// drag строго за полоску (не за кнопки — иначе pointer capture съедает их клики)
+let shY = null, shDy = 0, shDrag = false;
+sheetGrip.addEventListener("pointerdown", (e) => {
+  shDrag = true; shY = e.clientY; shDy = 0;
+  sheetEl.style.transition = "none";
+  try { sheetGrip.setPointerCapture(e.pointerId); } catch (_) {}
+});
+sheetGrip.addEventListener("pointermove", (e) => {
+  if (!shDrag) return;
+  shDy = Math.max(0, e.clientY - shY);           // вверх не тянем — только вниз
+  sheetEl.style.transform = `translateY(${shDy}px)`;
+  E("sheetBg").style.opacity = String(Math.max(0, 1 - shDy / 420));
+});
+const sheetDragEnd = () => {
+  if (!shDrag) return;
+  shDrag = false;
+  sheetEl.style.transition = "";
+  if (shDy > 90) { closeSheet(); }
+  else { sheetEl.style.transform = ""; E("sheetBg").style.opacity = ""; }  // пружина назад
+};
+sheetGrip.addEventListener("pointerup", sheetDragEnd);
+sheetGrip.addEventListener("pointercancel", sheetDragEnd);
 
 // ─────────── paste ───────────
 E("pasteBtn").addEventListener("click", async () => {
   let url = "";
   try { url = (await navigator.clipboard.readText() || "").trim(); } catch (_) {}
-  if (!url) url = (prompt("Ссылка на плейлист / My Mix:") || "").trim();
+  if (!url) url = (prompt("Ссылка на плейлист / My Mix / список видео:") || "").trim();
   if (!url) return;
   const r = await api("/api/add", { url });
   hint(r.ok ? "Добавлено ✓" : r.msg, !r.ok);
@@ -403,9 +469,10 @@ E("pasteBtn").addEventListener("click", async () => {
 let hintT = null;
 function hint(msg, err) {
   const h = E("pasteHint");
-  h.textContent = msg; h.className = "hint" + (err ? " err" : "");
+  h.textContent = msg;
+  h.className = "hint show" + (err ? " err" : "");   // .show → плавный вход
   clearTimeout(hintT);
-  hintT = setTimeout(() => { h.textContent = ""; }, 2600);
+  hintT = setTimeout(() => { h.classList.remove("show"); }, 2600);  // плавный уход
 }
 
 // ─────────── apply state (coalesced via rAF) ───────────
