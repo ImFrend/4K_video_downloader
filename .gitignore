@@ -35,3 +35,6 @@ env/
 done.txt
 *.log
 .DS_Store
+
+# сборка расширения для Kiwi
+termuxyoutube-kiwi.zip
