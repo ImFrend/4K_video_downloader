@@ -107,6 +107,16 @@ def ensure_fresh_cookies(max_age_hours: float | None = None) -> Tuple[str, str]:
     max_age = config.COOKIES_MAX_AGE_HOURS if max_age_hours is None else max_age_hours
     age = cookies_age_hours()
 
+    # cookies принесены извне — перезаписать их профилем из Debian значит молча
+    # подменить станцию микса на чужую. Только сообщаем возраст.
+    if config.cookies_are_external():
+        if age is None:
+            return "no_cookies", "cookies.txt пропал — повтори: python main.py cookies"
+        if age > max_age:
+            return "stale", (f"cookies из браузера устарели ({age:.0f}ч) — "
+                             f"выгрузи заново: python main.py cookies")
+        return "fresh", f"cookies из браузера ({age:.1f}ч)"
+
     # свежие — браузер не трогаем вообще (ни здесь, ни через proot)
     if age is not None and age < max_age:
         return _fresh_msg(age)

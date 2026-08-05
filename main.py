@@ -8,6 +8,7 @@ TermuxYoutube — точка входа.
                             только если сохранённая сессия уже мертва
   python main.py refresh    обновить cookies (сам сходит в браузер-слой)
   python main.py doctor     проверить зависимости: что стоит, чего не хватает
+  python main.py cookies    взять cookies из браузера телефона (см. README)
   python main.py grab URL   скачать без TUI (CLI-режим, для отладки)
 """
 from __future__ import annotations
@@ -43,6 +44,38 @@ def _doctor() -> int:
     return 0 if ok else 1
 
 
+def _cookies(args: list) -> int:
+    """
+    Взять cookies из браузера телефона.
+
+    Состав My Mix определяется идентичностью сессии: с cookies того браузера,
+    где ты смотришь миксы, yt-dlp воспроизводит ЕГО список один в один
+    (проверено на устройстве: 25 из 25 против 2 из 25 с профилем из Debian).
+    """
+    from pathlib import Path
+
+    import config
+    from auth.cookies_export import find_exported_cookies, import_cookies
+
+    src = Path(args[0]).expanduser() if args else find_exported_cookies()
+    if src is None:
+        print("Не нашёл выгруженный cookies-файл в «Загрузках».")
+        print("Выгрузи его из браузера (расширение экспорта cookies, формат Netscape)")
+        print("или укажи путь:  python main.py cookies /путь/к/cookies.txt")
+        return 1
+
+    ok, msg = import_cookies(src, config.COOKIES_FILE)
+    if not ok:
+        print(f"✗  {src}: {msg}")
+        return 1
+
+    config.mark_cookies_external(str(src))
+    print(f"✓  Взял cookies из {src} — {msg}")
+    print("   Миксы теперь будут такими же, как в этом браузере.")
+    print("   Авто-обновление их не тронет; когда устареют, повтори эту команду.")
+    return 0
+
+
 def main() -> int:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "tui"
 
@@ -52,6 +85,9 @@ def main() -> int:
 
     if cmd == "doctor":
         return _doctor()
+
+    if cmd == "cookies":
+        return _cookies(sys.argv[2:])
 
     _warn_stale_setup()
 

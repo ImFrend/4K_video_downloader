@@ -5,6 +5,7 @@ cookies.txt
 cookies*.txt
 *-cookies.txt
 *cookies*.txt
+.cookies-external
 state.json
 browser-profile/
 *.cookies

@@ -1,14 +1,22 @@
 """
-Конвертер cookies Playwright → формат Netscape (cookies.txt), который ест yt-dlp.
+Работа с файлом cookies.txt (формат Netscape — его ест yt-dlp):
 
-Playwright отдаёт cookies как список dict'ов; yt-dlp хочет Netscape-файл:
-  domain  flag  path  secure  expiry  name  value
+  • конвертер из cookies Playwright: domain flag path secure expiry name value;
+  • проверка, есть ли в готовом файле маркеры входа;
+  • импорт файла, выгруженного из ДРУГОГО браузера.
+
+Про импорт. Проверено на устройстве: состав RD-микса определяется идентичностью
+сессии в cookies — yt-dlp с cookies из Kiwi выдал ровно её список, 25 из 25,
+хотя с cookies профиля из Debian давал свой (2 из 25). Значит принеся cookies
+того браузера, где ты смотришь миксы, всё сводится к одной станции.
 """
 from __future__ import annotations
 
 import os
+import shutil
+import time
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, List, Optional, Tuple
 
 
 NETSCAPE_HEADER = (
@@ -48,6 +56,66 @@ def netscape_has_auth(path: Path) -> bool:
         if len(parts) >= 6:
             names.add(parts[5])
     return bool(AUTH_MARKERS & names)
+
+
+# ──────────────────── импорт cookies из другого браузера ────────────────────
+# Где браузеры Android складывают выгруженные файлы
+_DOWNLOAD_DIRS = ("/storage/emulated/0/Download", "/storage/emulated/0/Downloads",
+                  "~/storage/downloads", "~/Downloads")
+
+
+def find_exported_cookies() -> Optional[Path]:
+    """Свежайший *cookies*.txt в папке «Загрузки» — чтобы не искать путь руками."""
+    best: Optional[Path] = None
+    for d in _DOWNLOAD_DIRS:
+        p = Path(os.path.expanduser(d))
+        if not p.is_dir():
+            continue
+        for f in p.glob("*cookies*.txt"):
+            try:
+                if best is None or f.stat().st_mtime > best.stat().st_mtime:
+                    best = f
+            except OSError:
+                continue
+    return best
+
+
+def validate_netscape(path: Path) -> Tuple[bool, str]:
+    """Годится ли файл в качестве cookies.txt. Ошибку называем словами."""
+    try:
+        txt = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as ex:
+        return False, f"файл не читается: {ex}"
+    if not txt.strip():
+        return False, "файл пустой"
+    if txt.lstrip().startswith(("{", "[")):
+        return False, "это JSON, а нужен формат Netscape (в расширении выбери «Netscape»)"
+    rows = [ln for ln in txt.splitlines()
+            if ln.strip() and not ln.startswith("#") and ln.count("\t") >= 5]
+    if not rows:
+        return False, "не вижу ни одной строки cookie — формат не Netscape"
+    if not netscape_has_auth(path):
+        return False, ("нет маркеров входа — экспортируй cookies со страницы "
+                       "youtube.com, где ты авторизован")
+    return True, f"{len(rows)} cookies, вход на месте"
+
+
+def import_cookies(src: Path, dest: Path) -> Tuple[bool, str]:
+    """
+    Кладёт внешний cookies-файл на место рабочего. Проверяет ДО замены — лучше
+    отказать сразу, чем узнать о кривом файле посреди загрузки.
+    """
+    ok, msg = validate_netscape(src)
+    if not ok:
+        return False, msg
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(dest.name + ".tmp")
+        shutil.copyfile(src, tmp)
+        os.replace(tmp, dest)               # атомарно: читатель не поймает половину
+    except OSError as ex:
+        return False, f"не удалось скопировать: {ex}"
+    return True, msg
 
 
 def cookies_to_netscape(cookies: Iterable[dict]) -> str:

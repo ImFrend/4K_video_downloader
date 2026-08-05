@@ -178,6 +178,8 @@ def visible_login(timeout_s: Optional[float] = None) -> int:
         return 1
 
     n = write_cookies_file(cookies, config.COOKIES_FILE)
+    # вход через браузер-слой снова делает хозяином профиль в Debian
+    config.unmark_cookies_external()
     print(f"✓  Вход сохранён: {n} cookies → {config.COOKIES_FILE}")
     print("   Дальше cookies обновляются сами, по времени. Окно больше не нужно.")
     return 0
