@@ -222,6 +222,17 @@ class DownloadManager:
         ids = self._parse_id_list(url)
         if ids:                              # вставили список видео, а не ссылку
             return self._probe_ids(ids)
+
+        # Микс: состав спрашиваем у БРАУЗЕРА, а не у yt-dlp. RD-станция привязана
+        # к сессии, поэтому yt-dlp отдаёт свою выдачу — стабильную, но не ту,
+        # что видно в YouTube. Браузер-слой у нас уже есть, он и есть источник
+        # правды. Не вышло (нет proot, не отдалась очередь) — работаем как раньше.
+        if config.MIX_FROM_BROWSER and self._is_mix(url):
+            from auth import bridge
+            snap = bridge.mix_snapshot(url)
+            if len(snap) >= 2:
+                return self._probe_ids(snap[:config.MIX_SNAPSHOT_LIMIT])
+
         url = self._normalize_mix_url(url)   # My Mix `playlist?list=RD…` → watch?v=<сид>&list=…
         opts = self._base_opts() | {
             "skip_download": True,
