@@ -487,6 +487,12 @@ input[type=range]::-moz-range-thumb {
 }
 .sheet-go:active { transform: scale(.98); }
 .sheet-go:disabled { background: var(--surface-2); color: var(--tx-2); box-shadow: none; }
+.sheet-go[hidden] { display: none; }
+/* второстепенное действие: рядом с основным не должно выглядеть равным ему */
+.sheet-go.alt {
+  background: none; border: .5px solid var(--line); color: var(--tx-2);
+  font-size: 14px; font-weight: 500; box-shadow: none; padding: 12px;
+}
 .log {
   margin: 10px 0 0; max-height: 108px; overflow-y: auto;
   background: var(--bg); border: .5px solid var(--line); border-radius: 10px;

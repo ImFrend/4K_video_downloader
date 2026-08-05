@@ -117,9 +117,10 @@
         просто обновятся cookies. Если истекла — телефон сам откроет
         <b>Termux:X11</b> с формой Google, а как войдёшь, окно закроется само.
       </p>
+      <button class="sheet-go" id="renewBtn" hidden>Продлить cookies</button>
       <button class="sheet-go" id="loginBtn">Войти в Google</button>
       <pre class="log" id="loginLog" hidden></pre>
-      <p class="sheet-note dim">сменить аккаунт: <code>bash scripts/login.sh --force</code></p>
+      <p class="sheet-note dim" id="authHint"></p>
       <button class="sheet-close" id="sheetClose">Понятно</button>
     </div>
   </div>

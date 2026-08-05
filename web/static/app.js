@@ -389,8 +389,19 @@ function renderCookies() {
 // мертва → поднимет X11, откроет Termux:X11 и покажет форму Google.
 E("loginBtn").addEventListener("click", async () => {
   if (E("loginBtn").disabled) return;
+  // при внешних cookies вход через Debian перезапишет их профилем proot и
+  // сменит станцию микса — спрашиваем, а не делаем молча
+  if ((state.cookies || {}).external === true &&
+      !confirm("Вход через Debian заменит cookies из твоего браузера. " +
+               "Миксы станут другими. Продолжить?")) return;
   const r = await api("/api/login");
-  if (!r.ok) hint(r.msg || "вход не запустился", true);
+  if (!r.ok) hint(r.msg || "вход не запустился", "err");
+});
+
+E("renewBtn").addEventListener("click", async () => {
+  if (E("renewBtn").disabled) return;
+  const r = await api("/api/renew");
+  if (!r.ok) hint(r.msg || "не запустилось", "err");
 });
 
 // окружение отстало от кода (обновились через git pull, а зависимости — нет)
@@ -404,10 +415,24 @@ function renderSetup() {
 
 function renderAuth() {
   const a = state.auth || {};
-  const btn = E("loginBtn"), log = E("loginLog");
+  const btn = E("loginBtn"), renew = E("renewBtn"), log = E("loginLog");
   const busy = a.state === "running";
+  // два режима, и действия у них разные: продлить свою сессию либо завести новую
+  const ext = (state.cookies || {}).external === true;
+
+  renew.hidden = !ext;
+  renew.disabled = busy;
+  renew.textContent = busy ? "Продлеваю…" : "Продлить cookies";
+
   btn.disabled = busy;
-  btn.textContent = busy ? "Вхожу…" : (a.state === "ok" ? "Войти ещё раз" : "Войти в Google");
+  btn.classList.toggle("alt", ext);        // в режиме браузера это запасной путь
+  btn.textContent = ext
+    ? "Войти через Debian (сменит миксы)"
+    : (busy ? "Вхожу…" : (a.state === "ok" ? "Войти ещё раз" : "Войти в Google"));
+
+  E("authHint").textContent = ext
+    ? "cookies приходят из твоего браузера — обновить их можно тапом по иконке расширения в Kiwi"
+    : "сменить аккаунт: bash scripts/login.sh --force";
 
   const lines = a.log || [];
   log.hidden = lines.length === 0;

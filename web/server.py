@@ -144,6 +144,35 @@ class JobManager:
             self._bump()
         return True, msg
 
+    # ---- продлить cookies, не меняя их источник ----
+    def start_renew(self) -> tuple[bool, str]:
+        """
+        Обновить cookies тем же способом, каким они получены.
+
+        Отдельно от входа намеренно: при внешних cookies вход через Debian
+        перезаписал бы файл профилем proot и сменил станцию микса на чужую —
+        то есть одной кнопкой откатил бы всю настройку.
+        """
+        with self.lock:
+            if self.auth.get("state") == "running":
+                return False, "уже идёт"
+            self.auth = {"state": "running", "msg": "продлеваю cookies…", "log": []}
+            self._bump()
+        threading.Thread(target=self._renew_worker, daemon=True).start()
+        return True, "ok"
+
+    def _renew_worker(self) -> None:
+        try:
+            code, msg = ensure_fresh_cookies(max_age_hours=0)   # 0 = «прямо сейчас»
+        except Exception as ex:  # noqa: BLE001
+            code, msg = "refresh_failed", _short(ex)
+        with self.lock:
+            self.auth["state"] = "ok" if code in ("refreshed", "fresh") else "error"
+            self.auth["msg"] = msg
+            self.auth["log"] = [msg]
+            self._refresh_cookie_status()
+            self._bump()
+
     # ---- вход в Google (одна кнопка вместо шести команд) ----
     def start_login(self, force: bool = False) -> tuple[bool, str]:
         """Запускает умный вход в фоне. Окно откроется, только если сессия мертва."""
@@ -510,6 +539,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True})
         elif path == "/api/login":
             ok, msg = MANAGER.start_login(force=bool(body.get("force")))
+            self._json({"ok": ok, "msg": msg})
+        elif path == "/api/renew":
+            ok, msg = MANAGER.start_renew()
             self._json({"ok": ok, "msg": msg})
         else:
             self._send(404, b"not found", "text/plain")
