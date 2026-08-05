@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 
 # ── Корень проекта ──
@@ -40,6 +41,11 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 BROWSER_PROFILE_DIR = ROOT / "auth" / "profile"
 # Экспортированные cookies в формате Netscape — их ест yt-dlp.
 COOKIES_FILE = ROOT / "cookies.txt"
+# Метка «cookies принесены извне» (экспорт из браузера телефона), с датой импорта.
+# Пока она стоит, cookies.txt НЕ трогает ни авто-обновление, ни браузер-слой:
+# состав микса определяется идентичностью сессии, и перезапись профилем из
+# Debian молча подменила бы станцию на чужую.
+COOKIES_EXTERNAL_MARK = ROOT / ".cookies-external"
 
 # Флаги Chromium для proot/Termux-X11.
 # Чёрный экран в Termux:X11 = падает GL-инициализация. Лечение (проверено на S23):
@@ -211,6 +217,27 @@ OUTPUT_TEMPLATE_SINGLE = "%(title)s.%(ext)s"
 
 def have_cookies() -> bool:
     return COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 0
+
+
+def cookies_are_external() -> bool:
+    """cookies принесены из другого браузера — трогать их автоматике нельзя."""
+    return COOKIES_EXTERNAL_MARK.exists() and have_cookies()
+
+
+def mark_cookies_external(source: str) -> None:
+    try:
+        COOKIES_EXTERNAL_MARK.write_text(
+            f"{source}\n{time.strftime('%Y-%m-%d %H:%M')}\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def unmark_cookies_external() -> None:
+    """Вход через браузер-слой снова делает хозяином профиль в Debian."""
+    try:
+        COOKIES_EXTERNAL_MARK.unlink()
+    except OSError:
+        pass
 
 
 # ── Версия набора зависимостей ──

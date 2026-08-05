@@ -223,11 +223,14 @@ class DownloadManager:
         if ids:                              # вставили список видео, а не ссылку
             return self._probe_ids(ids)
 
-        # Микс: состав спрашиваем у БРАУЗЕРА, а не у yt-dlp. RD-станция привязана
-        # к сессии, поэтому yt-dlp отдаёт свою выдачу — стабильную, но не ту,
-        # что видно в YouTube. Браузер-слой у нас уже есть, он и есть источник
-        # правды. Не вышло (нет proot, не отдалась очередь) — работаем как раньше.
-        if config.MIX_FROM_BROWSER and self._is_mix(url):
+        # Микс: RD-станция привязана к идентичности сессии в cookies.
+        #   • cookies принесены из твоего браузера → yt-dlp воспроизводит ЕГО
+        #     станцию сам (проверено: 25 из 25), браузер-слой не нужен;
+        #   • cookies из профиля в Debian → у yt-dlp своя станция, не та, что
+        #     видно в YouTube. Тогда состав спрашиваем у браузер-слоя.
+        # Не вышло (нет proot, очередь не отдалась) — работаем как раньше.
+        if config.MIX_FROM_BROWSER and self._is_mix(url) \
+                and not config.cookies_are_external():
             from auth import bridge
             snap = bridge.mix_snapshot(url)
             if len(snap) >= 2:

@@ -100,6 +100,8 @@ class JobManager:
             self.cookies = {"status": "fresh", "msg": f"свежие ({age:.1f}ч)"}
         # под аккаунтом или анонимно — от этого зависит, стабилен ли микс
         self.cookies["auth"] = netscape_has_auth(config.COOKIES_FILE)
+        # откуда cookies: состав микса определяется именно этим
+        self.cookies["external"] = config.cookies_are_external()
 
     # ---- вход в Google (одна кнопка вместо шести команд) ----
     def start_login(self, force: bool = False) -> tuple[bool, str]:
