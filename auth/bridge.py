@@ -16,11 +16,13 @@
 from __future__ import annotations
 
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Sequence, Tuple
+from typing import Callable, Iterable, List, Optional, Sequence, Tuple
 
 import config
 
@@ -142,6 +144,33 @@ def refresh_via_proot() -> Tuple[str, str]:
     if "истек" in tail or "вход" in tail:
         return "expired", tail
     return "error", tail or f"браузер-слой вернул код {rc}"
+
+
+# ──────────────────────────── снимок очереди микса ────────────────────────────
+_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+def mix_snapshot(url: str) -> List[str]:
+    """
+    Состав микса, снятый БРАУЗЕРОМ (там, где он реально существует).
+    Пусто — браузер-слой недоступен или страница не отдала очередь; вызывающий
+    в этом случае откатывается на обычный разбор через yt-dlp.
+    """
+    if in_browser_layer():          # мы уже внутри Debian — зовём напрямую
+        try:
+            from auth.mix import snapshot
+            return snapshot(url)
+        except Exception:  # noqa: BLE001
+            return []
+
+    if not can_bridge():
+        return []
+    rc, out = run_in_debian(f"python3 -m auth.mix {shlex.quote(url)}",
+                            timeout=config.PROOT_MIX_TIMEOUT)
+    if rc != 0:
+        return []
+    # из вывода берём только строки-идентификаторы: proot любит досыпать своё
+    return [ln.strip() for ln in out.splitlines() if _ID_RE.match(ln.strip())]
 
 
 # ──────────────────────────── вход (видимое окно) ────────────────────────────
