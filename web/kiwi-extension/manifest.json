@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "TermuxYoutube — cookies",
+  "version": "1.0",
+  "description": "Отдаёт cookies YouTube локальной качалке на 127.0.0.1 — чтобы миксы совпадали с этим браузером",
+  "permissions": ["cookies"],
+  "host_permissions": [
+    "https://*.youtube.com/*",
+    "https://*.google.com/*",
+    "http://127.0.0.1/*"
+  ],
+  "action": {
+    "default_title": "Отдать cookies качалке",
+    "default_popup": "popup.html"
+  }
+}

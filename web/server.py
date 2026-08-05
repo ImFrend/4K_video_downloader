@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import subprocess
 import threading
@@ -28,7 +29,8 @@ from typing import Optional
 import config
 from core.downloader import DownloadManager, Track
 from auth import bridge
-from auth.cookies_export import netscape_has_auth
+from auth.cookies_export import (cookies_to_netscape, netscape_has_auth,
+                                 validate_netscape)
 from auth.refresh import cookies_age_hours, ensure_fresh_cookies
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -102,6 +104,45 @@ class JobManager:
         self.cookies["auth"] = netscape_has_auth(config.COOKIES_FILE)
         # откуда cookies: состав микса определяется именно этим
         self.cookies["external"] = config.cookies_are_external()
+
+    # ---- cookies из браузера (расширение для Kiwi) ----
+    def accept_cookies(self, raw: list) -> tuple[bool, str]:
+        """
+        Принять cookies, присланные расширением браузера.
+
+        Состав микса определяется идентичностью сессии, поэтому cookies того
+        браузера, где ты смотришь миксы, — это и есть «правильная» станция.
+        Пишем через ту же проверку, что и ручной импорт: кривой набор не должен
+        подменить рабочий файл.
+        """
+        cookies = []
+        for c in raw if isinstance(raw, list) else []:
+            if not isinstance(c, dict) or not c.get("name") or not c.get("domain"):
+                continue
+            cookies.append(c)
+        if not cookies:
+            return False, "пустой набор cookies"
+
+        tmp = config.COOKIES_FILE.with_name("cookies.incoming")
+        try:
+            tmp.write_text(cookies_to_netscape(cookies), encoding="utf-8")
+            ok, msg = validate_netscape(tmp)
+            if not ok:
+                return False, msg
+            os.replace(tmp, config.COOKIES_FILE)
+        except OSError as ex:
+            return False, f"не удалось записать: {ex}"
+        finally:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+        config.mark_cookies_external("расширение браузера")
+        with self.lock:
+            self._refresh_cookie_status()
+            self._bump()
+        return True, msg
 
     # ---- вход в Google (одна кнопка вместо шести команд) ----
     def start_login(self, force: bool = False) -> tuple[bool, str]:
@@ -326,6 +367,35 @@ class Handler(BaseHTTPRequestHandler):
         host = (self.headers.get("Host") or "").split(":")[0]
         return host in ("127.0.0.1", "localhost", "")
 
+    # --- cookies принимаем ТОЛЬКО от расширения браузера ---
+    # Обычная веб-страница тоже может достучаться до 127.0.0.1 и подсунуть мусор
+    # вместо рабочих cookies. Поэтому: origin обязан быть chrome-extension://
+    # (у страниц он http/https), а Content-Type: application/json заставляет
+    # браузер сперва спросить разрешение preflight-запросом — который мы такой
+    # странице не дадим. Пустой origin = не браузер (curl) либо наша же страница.
+    def _ext_origin(self) -> Optional[str]:
+        origin = self.headers.get("Origin") or ""
+        if not origin:
+            return ""
+        return origin if origin.startswith("chrome-extension://") else None
+
+    def _cors(self, origin: str) -> None:
+        self.send_header("Access-Control-Allow-Origin", origin or "*")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Vary", "Origin")
+
+    def do_OPTIONS(self) -> None:      # preflight от расширения
+        origin = self._ext_origin()
+        if not self._host_ok() or origin is None \
+                or self.path.split("?")[0] != "/api/cookies":
+            self._send(403, b"forbidden", "text/plain")
+            return
+        self.send_response(204)
+        self._cors(origin)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _send(self, code: int, body: bytes, ctype: str) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
@@ -404,6 +474,26 @@ class Handler(BaseHTTPRequestHandler):
             self._send(403, b"forbidden", "text/plain")
             return
         path = self.path.split("?")[0]
+
+        if path == "/api/cookies":
+            origin = self._ext_origin()
+            ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+            if origin is None or ctype != "application/json":
+                self._send(403, b"forbidden", "text/plain")
+                return
+            ok, msg = MANAGER.accept_cookies(self._read_json().get("cookies"))
+            body_b = json.dumps({"ok": ok, "msg": msg}, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self._cors(origin)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body_b)))
+            self.end_headers()
+            try:
+                self.wfile.write(body_b)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            return
+
         body = self._read_json()
 
         if path == "/api/add":
