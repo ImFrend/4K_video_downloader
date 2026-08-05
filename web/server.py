@@ -137,8 +137,9 @@ class JobManager:
     # ---- очередь ----
     def add_url(self, url: str) -> tuple[Optional[int], str]:
         url = (url or "").strip()
-        if not url.startswith("http"):
-            return None, "это не ссылка"
+        # принимаем и ссылку, и вставленный список видео (снимок очереди с ПК)
+        if not url.startswith("http") and not DownloadManager._parse_id_list(url):
+            return None, "это не ссылка и не список видео"
         with self.lock:
             active = [j for j in self.jobs if j.status != "error"]
             if len(active) >= config.WEB_MAX_PLAYLISTS:
