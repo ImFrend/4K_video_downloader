@@ -26,6 +26,30 @@ def has_auth_cookies(cookies: Iterable[dict]) -> bool:
     return bool(AUTH_MARKERS & names)
 
 
+def netscape_has_auth(path: Path) -> bool:
+    """
+    Есть ли в готовом cookies.txt маркеры входа.
+
+    Отвечает на вопрос «качалка ходит под аккаунтом или анонимно» — а от этого
+    зависит поведение микса: под аккаунтом выдача персональная и стабильная,
+    анонимно — случайное радио от сида, каждый запрос новый. Без такой проверки
+    разницу приходится угадывать по составу скачанного.
+    """
+    try:
+        txt = path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return False
+    names = set()
+    for line in txt.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 6:
+            names.add(parts[5])
+    return bool(AUTH_MARKERS & names)
+
+
 def cookies_to_netscape(cookies: Iterable[dict]) -> str:
     """Превращает список cookies Playwright в текст Netscape-файла."""
     lines = [NETSCAPE_HEADER]

@@ -28,6 +28,7 @@ from typing import Optional
 import config
 from core.downloader import DownloadManager, Track
 from auth import bridge
+from auth.cookies_export import netscape_has_auth
 from auth.refresh import cookies_age_hours, ensure_fresh_cookies
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -97,6 +98,8 @@ class JobManager:
             self.cookies = {"status": "stale", "msg": f"устарели ({age:.0f}ч)"}
         else:
             self.cookies = {"status": "fresh", "msg": f"свежие ({age:.1f}ч)"}
+        # под аккаунтом или анонимно — от этого зависит, стабилен ли микс
+        self.cookies["auth"] = netscape_has_auth(config.COOKIES_FILE)
 
     # ---- вход в Google (одна кнопка вместо шести команд) ----
     def start_login(self, force: bool = False) -> tuple[bool, str]:
@@ -151,6 +154,10 @@ class JobManager:
             self.jobs.append(job)
             self._bump()
         threading.Thread(target=self._probe, args=(job,), daemon=True).start()
+        # предупреждаем ровно там, где это важно: анонимный микс = случайная
+        # выдача, и она не совпадёт с тем, что видно в приложении YouTube
+        if DownloadManager._is_mix(url) and not netscape_has_auth(config.COOKIES_FILE):
+            return job.id, "добавлено — но без входа микс будет случайным"
         return job.id, "ok"
 
     def _probe(self, job: Job) -> None:
