@@ -1,5 +1,10 @@
 # ─── Секреты: НИКОГДА не коммитить ───
+# любой cookies-файл = доступ к аккаунту. Шаблоном, а не одним именем: cookies
+# приносят и извне (экспорт из браузера телефона), под произвольными именами.
 cookies.txt
+cookies*.txt
+*-cookies.txt
+*cookies*.txt
 state.json
 browser-profile/
 *.cookies
