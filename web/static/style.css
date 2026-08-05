@@ -163,6 +163,7 @@ body.live .brand-led { background: var(--green); box-shadow: 0 0 7px rgba(50,215
 }
 .hint.show { opacity: 1; transform: none; }
 .hint.err { color: var(--red); }
+.hint.warn { color: var(--yellow); }
 
 /* ── лейблы блоков: mono-эйбрав + хвостовая линейка ── */
 .block { margin-top: 24px; }

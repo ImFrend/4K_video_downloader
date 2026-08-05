@@ -125,8 +125,18 @@ if [ -z "$STAMP_MSG" ]; then
 else
     bad "$STAMP_MSG" "bash scripts/setup-termux.sh"
 fi
+# важно не «файл есть», а есть ли в нём маркеры входа: анонимный микс —
+# случайная выдача, которая не совпадёт с приложением YouTube
 if [ -s "$DIR/cookies.txt" ]; then
-    ok "вход выполнен (cookies.txt есть)"
+    if python -c "
+import sys, config
+from auth.cookies_export import netscape_has_auth
+sys.exit(0 if netscape_has_auth(config.COOKIES_FILE) else 1)" 2>/dev/null; then
+        ok "вход подтверждён — качаем под аккаунтом"
+    else
+        bad "cookies.txt без маркеров входа — качаться будет анонимно" \
+            "bash scripts/login.sh --force"
+    fi
 else
     warn "входа нет — публичное качается, приватное нет: bash scripts/login.sh"
 fi

@@ -374,6 +374,12 @@ function renderCookies() {
   const c = state.cookies || {};
   E("ckDot").className = "ck-dot " + (c.status || "");
   E("ckMsg").textContent = c.msg || "—";
+  // главный вопрос при разъезжающихся миксах: мы под аккаунтом или анонимно
+  const ok = c.auth === true;
+  E("authDot").className = "ck-dot " + (ok ? "fresh" : "none");
+  E("authMsg").textContent = ok
+    ? "качаю под аккаунтом — микс как в приложении"
+    : "аккаунт не подтверждён — микс будет случайным";
 }
 
 // ─────────── вход одной кнопкой ───────────
@@ -466,15 +472,18 @@ E("pasteBtn").addEventListener("click", async () => {
   if (!url) url = (prompt("Ссылка на плейлист / My Mix / список видео:") || "").trim();
   if (!url) return;
   const r = await api("/api/add", { url });
-  hint(r.ok ? "Добавлено ✓" : r.msg, !r.ok);
+  if (!r.ok) hint(r.msg, "err");
+  else if (r.msg && r.msg !== "ok") hint(r.msg, "warn");   // добавили, но с оговоркой
+  else hint("Добавлено ✓");
 });
 let hintT = null;
-function hint(msg, err) {
+function hint(msg, level) {
   const h = E("pasteHint");
   h.textContent = msg;
-  h.className = "hint show" + (err ? " err" : "");   // .show → плавный вход
+  h.className = "hint show" + (level ? " " + level : "");   // .show → плавный вход
   clearTimeout(hintT);
-  hintT = setTimeout(() => { h.classList.remove("show"); }, 2600);  // плавный уход
+  hintT = setTimeout(() => { h.classList.remove("show"); },
+                     level === "warn" ? 5200 : 2600);       // оговорку показываем дольше
 }
 
 // ─────────── apply state (coalesced via rAF) ───────────
