@@ -149,19 +149,29 @@ https://www.youtube.com/watch?v=z3OKd5b2Rlw
 
 ```js
 (() => {
-  const box = document.querySelector('ytd-playlist-panel-renderer #items')
-           || document.querySelector('ytd-playlist-panel-renderer');
-  if (!box) return console.log('очередь не найдена — открой микс так, чтобы справа был список');
-  const ids = [...new Set([...box.querySelectorAll('a[href*="/watch?v="]')]
-    .map(a => new URL(a.href, location.origin).searchParams.get('v')).filter(Boolean))];
-  copy(ids.join('\n'));
+  const rows = [...document.querySelectorAll('ytd-playlist-panel-video-renderer a#wc-endpoint')]
+    .map(a => {
+      const u = new URL(a.href, location.origin);
+      return { i: +(u.searchParams.get('index') || 0),
+               id: u.searchParams.get('v'),
+               title: a.querySelector('#video-title')?.title || '' };
+    })
+    .filter(r => r.id)
+    .sort((a, b) => a.i - b.i);          // порядок из index=, а не из вёрстки
+  if (!rows.length) return console.log('очередь не найдена — открой микс так, чтобы справа был список');
+  const ids = [...new Set(rows.map(r => r.id))];
+  copy(ids.join('\n'));                  // в буфер уходят ТОЛЬКО id
+  console.table(rows);                   // а это — чтобы сверить глазами
   console.log('скопировано треков:', ids.length);
 })()
 ```
 
+Селекторы сверены с реальной вёрсткой панели очереди. `console.table` покажет
+номер, id и название каждого трека — сверь количество с длиной очереди. В буфер
+уходят **только id**, по одному в строке: именно это и ждёт приложение.
+
 Список окажется в буфере ПК — перекинь его себе любым способом (заметки,
-сообщение самому себе) и вставь в приложение. Число в консоли покажи глазами:
-должно совпасть с длиной очереди.
+сообщение самому себе) и вставь в приложение вместо ссылки.
 
 ### Без единой команды: иконка на домашнем экране
 
