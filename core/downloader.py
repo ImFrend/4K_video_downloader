@@ -159,8 +159,69 @@ class DownloadManager:
             return f"https://www.youtube.com/watch?v={seed}&list={mix_id}"
         return url
 
+    @staticmethod
+    def _parse_id_list(text: str) -> list[str]:
+        """
+        Явный список видео из вставки: ID и/или ссылки через запятую, пробел или
+        перенос строки. Пусто — значит это не список (одна ссылка, мусор).
+
+        Нужен из-за миксов: YouTube пересобирает RD-плейлист на КАЖДЫЙ запрос
+        (проверено: два одинаковых запроса подряд → 19 общих треков из 25 и
+        другой порядок). Поэтому повторить то, что видно на другом устройстве,
+        можно единственным способом — перечислить ролики поимённо.
+        """
+        parts = [p for p in re.split(r"[\s,;]+", (text or "").strip()) if p]
+        if len(parts) < 2:
+            return []
+        ids: list[str] = []
+        for p in parts:
+            m = (re.search(r"[?&]v=([A-Za-z0-9_-]{11})", p)
+                 or re.search(r"youtu\.be/([A-Za-z0-9_-]{11})", p))
+            vid = m.group(1) if m else (p if re.fullmatch(r"[A-Za-z0-9_-]{11}", p) else "")
+            if not vid:
+                return []          # хоть один непонятный кусок — не наш случай
+            if vid not in ids:     # дубли в очереди микса не редкость
+                ids.append(vid)
+        return ids if len(ids) >= 2 else []
+
+    def _probe_ids(self, ids: list[str]) -> Playlist:
+        """Плейлист ровно из перечисленных видео, в заданном порядке."""
+        titles: dict[str, str] = {}
+        try:
+            # временный плейлист YouTube из списка id — один запрос вместо N,
+            # и сразу с названиями. Не вышло — переживём, имена подставит yt-dlp
+            # при скачивании (в шаблоне имени файла всё равно %(title)s).
+            opts = self._base_opts() | {"skip_download": True,
+                                        "extract_flat": "in_playlist"}
+            with self._ydl(opts) as ydl:
+                info = ydl.extract_info(
+                    "https://www.youtube.com/watch_videos?video_ids="
+                    + ",".join(ids[:50]),
+                    download=False)
+            for e in (info.get("entries") or []) if isinstance(info, dict) else []:
+                if e and e.get("id"):
+                    titles[e["id"]] = e.get("title") or ""
+        except Exception:  # noqa: BLE001
+            pass
+
+        # порядок берём СВОЙ, а не тот, что вернул YouTube: список — источник правды
+        tracks = [
+            Track(title=titles.get(v) or v, id=v,
+                  url=f"https://www.youtube.com/watch?v={v}", playlist_index=i + 1)
+            for i, v in enumerate(ids)
+        ]
+        first = tracks[0].title if tracks else ""
+        return Playlist(
+            tracks=tracks,
+            title=f"Список — {first}" if first and first != tracks[0].id else "Список",
+            thumbnail=f"https://i.ytimg.com/vi/{ids[0]}/hqdefault.jpg",
+        )
+
     # ---- 1. разбор плейлиста/трека (лёгкий) ----
     def probe(self, url: str) -> Playlist:
+        ids = self._parse_id_list(url)
+        if ids:                              # вставили список видео, а не ссылку
+            return self._probe_ids(ids)
         url = self._normalize_mix_url(url)   # My Mix `playlist?list=RD…` → watch?v=<сид>&list=…
         opts = self._base_opts() | {
             "skip_download": True,
