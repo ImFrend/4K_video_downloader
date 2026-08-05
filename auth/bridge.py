@@ -146,6 +146,25 @@ def refresh_via_proot() -> Tuple[str, str]:
     return "error", tail or f"браузер-слой вернул код {rc}"
 
 
+def refresh_external_via_proot() -> Tuple[str, str]:
+    """
+    Продлить принесённые извне cookies через Debian.
+
+    В отличие от refresh_via_proot() профиль браузера НЕ нужен: личность сессии
+    приходит из самого cookies.txt, Debian даёт только Chromium.
+    """
+    if not have_proot():
+        return "unavailable", "браузер-слой не установлен (bash scripts/setup-termux.sh)"
+    rc, out = run_in_debian("python3 -m auth.refresh --external",
+                            timeout=config.PROOT_REFRESH_TIMEOUT)
+    tail = out.strip().splitlines()[-1].strip() if out.strip() else ""
+    if rc == 0:
+        return "ok", tail or "cookies браузера продлены"
+    if "истек" in tail or "выгрузи" in tail:
+        return "expired", tail
+    return "error", tail or f"браузер-слой вернул код {rc}"
+
+
 # ──────────────────────────── снимок очереди микса ────────────────────────────
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 

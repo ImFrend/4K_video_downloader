@@ -19,6 +19,9 @@ from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
 
+# yt-dlp и расширения-экспортёры помечают httpOnly-cookies этим префиксом
+HTTPONLY_PREFIX = "#HttpOnly_"
+
 NETSCAPE_HEADER = (
     "# Netscape HTTP Cookie File\n"
     "# Сгенерировано TermuxYoutube. НЕ редактировать вручную и НЕ коммитить.\n"
@@ -56,6 +59,48 @@ def netscape_has_auth(path: Path) -> bool:
         if len(parts) >= 6:
             names.add(parts[5])
     return bool(AUTH_MARKERS & names)
+
+
+def netscape_to_cookies(path: Path) -> List[dict]:
+    """
+    Обратный разбор cookies.txt → список для Playwright.
+
+    Нужен, чтобы продлевать ЧУЖУЮ сессию, не имея её профиля: загружаем cookies
+    в чистый контекст, заходим на YouTube, Google прокручивает токены — и мы
+    пишем их обратно. Идентичность сессии сохраняется, а значит и станция микса.
+    """
+    try:
+        txt = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    out: List[dict] = []
+    for line in txt.splitlines():
+        raw = line.strip()
+        http_only = raw.startswith(HTTPONLY_PREFIX)
+        if http_only:
+            raw = raw[len(HTTPONLY_PREFIX):]
+        if not raw or raw.startswith("#"):
+            continue
+        parts = raw.split("\t")
+        if len(parts) < 7:
+            continue
+        domain, _include_sub, cpath, secure, expiry, name, value = parts[:7]
+        if not domain or not name:
+            continue
+        c = {
+            "name": name, "value": value, "domain": domain,
+            "path": cpath or "/",
+            "secure": secure.strip().upper() == "TRUE",
+            "httpOnly": http_only,
+        }
+        try:
+            exp = int(expiry)
+            if exp > 0:
+                c["expires"] = exp     # 0/отсутствие = сессионная, Playwright сам поймёт
+        except ValueError:
+            pass
+        out.append(c)
+    return out
 
 
 # ──────────────────── импорт cookies из другого браузера ────────────────────

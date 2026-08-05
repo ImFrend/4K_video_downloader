@@ -23,7 +23,8 @@ from typing import Tuple
 
 import config
 from auth import bridge
-from auth.cookies_export import has_auth_cookies, write_cookies_file
+from auth.cookies_export import (has_auth_cookies, netscape_to_cookies,
+                                 write_cookies_file)
 
 # один поток обновления на процесс: web-UI может дёрнуть ensure_fresh_cookies()
 # из нескольких мест, а поднимать два Chromium в proot одновременно незачем
@@ -98,6 +99,61 @@ def _refresh_once() -> Tuple[str, str]:
     return "ok", f"cookies.txt обновлён ({n} cookies)"
 
 
+def _refresh_external_once() -> Tuple[str, str]:
+    """
+    Продлить ПРИНЕСЁННЫЕ извне cookies, не меняя личность сессии.
+
+    Профиля того браузера у нас нет и быть не может (чужой app-каталог Android
+    недоступен без root). Но личность сессии живёт в самих cookies — это и
+    показал замер «25 из 25». Поэтому грузим их в ЧИСТЫЙ контекст (не в профиль
+    Debian, иначе подмешается его личность и станция уедет), заходим на YouTube,
+    даём Google прокрутить токены и пишем обратно.
+    """
+    seed = netscape_to_cookies(config.COOKIES_FILE)
+    if not seed:
+        return "error", "не смог разобрать cookies.txt"
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return "no_playwright", "нет браузер-слоя — продлить не могу"
+
+    launch_kwargs = dict(headless=True, args=list(config.CHROMIUM_ARGS),
+                         ignore_default_args=["--enable-automation"])
+    if config.CHROMIUM_EXECUTABLE:
+        launch_kwargs["executable_path"] = config.CHROMIUM_EXECUTABLE
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(**launch_kwargs)
+            ctx = browser.new_context()      # без user_data_dir — чистая личность
+            try:
+                ctx.add_cookies(seed)
+                page = ctx.new_page()
+                page.goto(YOUTUBE, wait_until="domcontentloaded")
+                page.wait_for_timeout(3000)  # дать браузеру обновить токены
+                cookies = ctx.cookies()
+            finally:
+                ctx.close()
+                browser.close()
+    except Exception as ex:  # noqa: BLE001
+        return "error", f"не удалось продлить: {ex}"
+
+    if not has_auth_cookies(cookies):
+        return "expired", ("сессия браузера истекла — выгрузи cookies заново: "
+                           "python main.py cookies")
+    n = write_cookies_file(cookies, config.COOKIES_FILE)
+    return "ok", f"cookies браузера продлены ({n} cookies)"
+
+
+def _external_refresh() -> Tuple[str, str]:
+    """Продление внешних cookies отсюда или через proot. Профиль не нужен."""
+    if _playwright_available():
+        return _refresh_external_once()
+    if config.AUTO_REFRESH_VIA_PROOT and bridge.have_proot():
+        return bridge.refresh_external_via_proot()
+    return "no_playwright", "браузер-слой не установлен — продлить не могу"
+
+
 # ──────────────────── публичный best-effort хук ────────────────────
 def ensure_fresh_cookies(max_age_hours: float | None = None) -> Tuple[str, str]:
     """
@@ -107,15 +163,23 @@ def ensure_fresh_cookies(max_age_hours: float | None = None) -> Tuple[str, str]:
     max_age = config.COOKIES_MAX_AGE_HOURS if max_age_hours is None else max_age_hours
     age = cookies_age_hours()
 
-    # cookies принесены извне — перезаписать их профилем из Debian значит молча
-    # подменить станцию микса на чужую. Только сообщаем возраст.
+    # cookies принесены извне: профилем из Debian их обновлять НЕЛЬЗЯ — это молча
+    # подменит станцию микса на чужую. Продлеваем их собственной сессией.
     if config.cookies_are_external():
         if age is None:
             return "no_cookies", "cookies.txt пропал — повтори: python main.py cookies"
-        if age > max_age:
-            return "stale", (f"cookies из браузера устарели ({age:.0f}ч) — "
-                             f"выгрузи заново: python main.py cookies")
-        return "fresh", f"cookies из браузера ({age:.1f}ч)"
+        if age < max_age:
+            return "fresh", f"cookies из браузера ({age:.1f}ч)"
+        with _LOCK:
+            age = cookies_age_hours()          # мог продлить параллельный поток
+            if age is not None and age < max_age:
+                return "fresh", f"cookies из браузера ({age:.1f}ч)"
+            code, msg = _external_refresh()
+        if code == "ok":
+            return "refreshed", msg
+        if code == "expired":
+            return "need_login", msg
+        return "refresh_failed", msg
 
     # свежие — браузер не трогаем вообще (ни здесь, ни через proot)
     if age is not None and age < max_age:
@@ -153,8 +217,12 @@ def ensure_fresh_cookies(max_age_hours: float | None = None) -> Tuple[str, str]:
 
 
 def main() -> int:
-    """python -m auth.refresh — работает и в Debian, и в нативном Termux."""
-    if _playwright_available():
+    """python -m auth.refresh [--external] — и в Debian, и в нативном Termux."""
+    external = "--external" in sys.argv[1:]
+    if external:
+        code, msg = _refresh_external_once() if _playwright_available() \
+            else bridge.refresh_external_via_proot()
+    elif _playwright_available():
         code, msg = _refresh_once()
     else:
         code, msg = bridge.refresh_via_proot()
