@@ -43,9 +43,9 @@ function plPlur(n) {
   return "плейлистов";
 }
 function riskOf(s) {
-  if (s <= 4) return { hex: "#30d158", e: "🟢", t: "безопасно (как 4KVD)" };
-  if (s <= 6) return { hex: "#ffd60a", e: "🟡", t: "чуть выше среднего — управляемый" };
-  return { hex: "#ff453a", e: "🔴", t: "высокий риск бана ⚠" };
+  if (s <= 4) return { hex: "#32d74b", t: "безопасно (как 4KVD)" };
+  if (s <= 6) return { hex: "#ffd60a", t: "чуть выше среднего — управляемый" };
+  return { hex: "#ff453a", t: "высокий риск бана" };
 }
 const TRK_IC = {
   queued: "·", downloading: "▸", converting: "⟳", done: "✓", error: "✕",
@@ -91,7 +91,9 @@ function paintStreams() {
   const sp = computeSplit(s, n);
   const r = riskOf(sp.total);                 // риск по РЕАЛЬНОМУ числу потоков
   E("streamsLabel").textContent = `${sp.plc} ${plPlur(sp.plc)} × ${sp.tpp} трека = ${sp.total} потоков`;
-  E("riskTag").textContent = r.e;
+  // точка риска: цвет + мягкое свечение того же цвета (вместо эмодзи-светофора)
+  E("riskTag").style.background = r.hex;
+  E("riskTag").style.boxShadow = `0 0 6px ${r.hex}66`;
   E("riskSub").textContent = r.t;
   const pos = ((s - 2) / 6) * 100;
   E("streams").style.background =
@@ -219,7 +221,7 @@ function makeCard(p) {
 function updateCard(n, p) {
   const r = n.r;
   if (p.thumbnail) { r.thumb.style.backgroundImage = `url("${p.thumbnail}")`; r.thumb.textContent = ""; }
-  else r.thumb.textContent = "🎵";
+  else r.thumb.textContent = "♪";      // текстовый глиф: одинаков на всех телефонах
   r.title.textContent = p.title || "Анализирую…";
 
   let sub = "", st = "", cls = "card-status";
@@ -252,7 +254,7 @@ function renderQueue() {
   if (!pls.length) {
     if (!ul.querySelector(".empty")) ul.innerHTML = `
       <div class="empty">
-        <div class="empty-ic">🎵</div>
+        <div class="empty-ic">♪</div>
         <div class="empty-t">Очередь пуста</div>
         <div class="empty-s">Вставь ссылку на плейлист, My Mix<br>или список видео</div>
       </div>`;
@@ -339,7 +341,7 @@ function renderDetail() {
   E("detailTitle").textContent = p.title || "";
   const cov = E("detailCover");
   if (p.thumbnail) { cov.style.backgroundImage = `url("${p.thumbnail}")`; cov.textContent = ""; }
-  else cov.textContent = "🎵";
+  else cov.textContent = "♪";
   const stLine = p.status === "done" ? "готово" : p.status === "downloading" ? "качаю…" : p.status === "queued" ? "в очереди" : "";
   E("detailStat").innerHTML = `<b>${p.done} / ${p.total}</b><br>${stLine}`;
 
@@ -504,10 +506,16 @@ function onState(s) {
 }
 
 // ─────────── SSE ───────────
+// LED в нейм-плейте показывает реальное состояние потока: зелёный — связь
+// живая, тусклый — сервер молчит и идёт переподключение.
 function connect() {
   const es = new EventSource("/api/events");
+  es.onopen = () => { document.body.classList.add("live"); };
   es.onmessage = (e) => { try { onState(JSON.parse(e.data)); } catch (_) {} };
-  es.onerror = () => { es.close(); setTimeout(connect, 1500); };
+  es.onerror = () => {
+    document.body.classList.remove("live");
+    es.close(); setTimeout(connect, 1500);
+  };
 }
 
 // init
