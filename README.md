@@ -15,7 +15,7 @@ aarch64), работает прямо в Termux. Качает **только а�
 
 <div align="center">
 
-## 🎬 Демонстрация работы AudioTrimmer
+## 🎬 Демонстрация работы TermuxYoutube
 
 <video src="https://github.com/user-attachments/assets/85a1d186-fae6-4d8c-945a-29e8ef7253e2" controls="controls" width="100%" style="max-width: 800px;">
   Ваш браузер не поддерживает встроенное видео. <a href="https://github.com/user-attachments/assets/85a1d186-fae6-4d8c-945a-29e8ef7253e2">Скачать видео</a>.
