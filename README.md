@@ -1,3 +1,7 @@
+
+
+
+
 # TermuxYoutube
 
 Аудио-граббер плейлистов YouTube для Android (проверено на **Samsung S23 Ultra**,
@@ -9,6 +13,10 @@ aarch64), работает прямо в Termux. Качает **только а�
 ---
 
 ## Что это и чем не является
+
+<video src="https://github.com/user-attachments/assets/85a1d186-fae6-4d8c-945a-29e8ef7253e2" controls style="max-width: 100%;"></video>
+
+
 
 - ✅ Скачивает **аудио** из плейлистов/видео/My Mix в `m4a` (AAC) или `mp3`.
 - ✅ Тянет **приватные плейлисты** и **My Mix** (вход в Google → cookies).
