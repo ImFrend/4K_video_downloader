@@ -58,8 +58,28 @@ need_py textual "textual (TUI)" "pip install -U textual"
 need_py rich    "rich (TUI)"    "pip install -U rich"
 if python -c "import yt_dlp" >/dev/null 2>&1; then
     V="$(python -c 'import yt_dlp;print(yt_dlp.version.__version__)' 2>/dev/null)"
-    printf '     %sверсия yt-dlp: %s (YouTube ломает совместимость чаще всего именно тут)%s\n' \
-        "$D" "${V:-?}" "$N"
+    printf '     %sверсия yt-dlp: %s%s\n' "$D" "${V:-?}" "$N"
+    # Возраст важнее номера: YouTube ломает совместимость раз в 2-4 недели, и
+    # чаще всего «форматы пропали» лечится именно обновлением. Версии yt-dlp
+    # датированные (ГГГГ.ММ.ДД), поэтому возраст считается прямо из неё.
+    AGE="$(python - <<'PY' 2>/dev/null
+import re, time
+import yt_dlp
+m = re.match(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", yt_dlp.version.__version__)
+if m:
+    t = time.mktime(time.strptime("-".join(m.groups()), "%Y-%m-%d"))
+    print(int((time.time() - t) // 86400))
+PY
+)"
+    case "${AGE:-}" in
+        ''|*[!0-9]*) : ;;                       # не датированная версия (git-сборка)
+        *) if [ "$AGE" -gt 30 ]; then
+               warn "yt-dlp старше 30 дней ($AGE) — обнови до разбора любых ошибок форматов:"
+               printf '     %spip install -U yt-dlp%s\n' "$D" "$N"
+           else
+               ok "yt-dlp свежий ($AGE дн.)"
+           fi ;;
+    esac
 fi
 
 head_ "Приложения (APK)"

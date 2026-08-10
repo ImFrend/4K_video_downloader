@@ -24,7 +24,13 @@ echo ">> [2/5] Базовые пакеты (python, ffmpeg, git, termux-api)"
 pkg install -y python ffmpeg git termux-api
 
 echo ">> [3/5] Доступ к памяти телефона (для папки с музыкой)"
-termux-setup-storage || echo "   (пропущено — дай разрешение вручную при запросе)"
+# Повторный запуск установщика не должен снова дёргать диалог разрешений и сыпать
+# предупреждениями: если доступ уже есть, просто молчим.
+if [ -d "$HOME/storage" ] || [ -w /storage/emulated/0 ]; then
+    echo "   (доступ уже есть — пропускаю)"
+else
+    termux-setup-storage || echo "   (пропущено — дай разрешение вручную при запросе)"
+fi
 
 echo ">> [4/5] Python-зависимости ядра и TUI"
 # ВАЖНО: на Termux НЕЛЬЗЯ обновлять сам pip (сломает пакет python-pip).
