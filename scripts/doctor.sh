@@ -39,10 +39,17 @@ need_cmd ffmpeg  "ffmpeg (извлечение аудио)" "pkg install ffmpeg"
 need_cmd git     "git"                   "pkg install git"
 need_cmd termux-media-scan "termux-api (Samsung Music видит треки сразу)" \
     "pkg install termux-api + APK Termux:API"
-if command -v deno >/dev/null 2>&1 || command -v node >/dev/null 2>&1; then
-    ok "JS-рантайм (n-challenge YouTube)"
+# Показываем, КАКОЙ рантайм возьмёт yt-dlp: приоритет его, не наш
+# (deno > node > quickjs > bun), и все они разрешены в config.JS_RUNTIMES.
+JSRT=""
+for c in deno node qjs qjs-ng quickjs bun; do
+    command -v "$c" >/dev/null 2>&1 && { JSRT="$c"; break; }
+done
+if [ -n "$JSRT" ]; then
+    ok "JS-рантайм: $JSRT (n-challenge YouTube)"
 else
-    bad "JS-рантайм — без него «Only images are available»" "pkg install deno"
+    bad "JS-рантайм — без него «Only images are available»" \
+        "pkg install deno (на armv7: pkg install nodejs или quickjs-ng)"
 fi
 
 head_ "Python-модули"

@@ -6,6 +6,8 @@ cookies*.txt
 *-cookies.txt
 *cookies*.txt
 .cookies-state
+# локальный секрет: им расширение доказывает серверу, что оно наше
+.api-token
 state.json
 *.cookies
 *.session

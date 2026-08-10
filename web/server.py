@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import random
@@ -33,6 +34,11 @@ from auth.refresh import ensure_fresh_cookies, probe_session
 from auth.refresh import status as cookie_status
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# Заголовок с токеном для /api/cookies. Само его наличие делает запрос
+# «непростым» → браузер обязан сперва спросить preflight, а его получает только
+# расширение. Имя знают обе стороны: сервер здесь, расширение — из main.py kiwi.
+TOKEN_HEADER = "X-TermuxYoutube-Token"
 
 _MIME = {
     ".html": "text/html; charset=utf-8",
@@ -351,25 +357,58 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     # --- guard от DNS-rebinding: пускаем только localhost ---
+    # Сервер слушает 127.0.0.1, но браузер отдаёт заголовок Host таким, какой
+    # набрали в адресной строке. Домен, у которого A-запись указывает на
+    # 127.0.0.1, обошёл бы бинд — не обойдёт этот guard.
     def _host_ok(self) -> bool:
         host = (self.headers.get("Host") or "").split(":")[0]
         return host in ("127.0.0.1", "localhost", "")
 
-    # --- cookies принимаем ТОЛЬКО от расширения браузера ---
-    # Обычная веб-страница тоже может достучаться до 127.0.0.1 и подсунуть мусор
-    # вместо рабочих cookies. Поэтому: origin обязан быть chrome-extension://
-    # (у страниц он http/https), а Content-Type: application/json заставляет
-    # браузер сперва спросить разрешение preflight-запросом — который мы такой
-    # странице не дадим. Пустой origin = не браузер (curl) либо наша же страница.
+    # --- свои же страницы: единственный источник команд очереди ---
+    # Без этой проверки любой сайт, открытый в браузере телефона, мог бы дёрнуть
+    # POST /api/add или /api/start: Content-Type text/plain делает запрос
+    # «простым», preflight не запрашивается, и запрос доходит — ответ CORS
+    # спрячет, но действие уже произошло. Читать он ничего не может, а вот
+    # ставить в очередь и запускать загрузки мог бы.
+    _SELF_ORIGINS = (f"http://{config.WEB_HOST}:{config.WEB_PORT}",
+                     f"http://localhost:{config.WEB_PORT}")
+
+    def _same_origin(self) -> bool:
+        """Запрос пришёл от нашей же страницы (или не из браузера вообще)."""
+        origin = self.headers.get("Origin") or ""
+        if origin:
+            return origin in self._SELF_ORIGINS
+        # Origin нет — это не кросс-сайтовый браузерный запрос: современные
+        # браузеры ставят его на любой POST, включая формы. Значит curl/CLI.
+        # Sec-Fetch-Site, если браузер его прислал, обязан быть same-origin.
+        site = self.headers.get("Sec-Fetch-Site")
+        return site in (None, "same-origin", "none")
+
+    # --- cookies принимаем ТОЛЬКО от НАШЕГО расширения ---
+    # Три замка, потому что тут отдают доступ к аккаунту:
+    #   1) origin обязан быть chrome-extension:// (у страниц он http/https);
+    #   2) Content-Type: application/json и заголовок с токеном — оба делают
+    #      запрос «непростым», то есть требуют preflight, а его мы даём только
+    #      расширению. Формой или simple-запросом такое не подделать;
+    #   3) токен из .api-token — его знает только расширение, собранное этой
+    #      установкой (python main.py kiwi зашивает его внутрь). Без него чужое
+    #      расширение, стоящее в том же браузере, могло бы подсунуть свои cookies.
     def _ext_origin(self) -> Optional[str]:
         origin = self.headers.get("Origin") or ""
         if not origin:
             return ""
         return origin if origin.startswith("chrome-extension://") else None
 
+    def _token_ok(self) -> bool:
+        want = config.api_token()
+        got = self.headers.get(TOKEN_HEADER) or ""
+        # сравнение постоянного времени: токен локальный, но привычка дешёвая
+        return bool(want) and hmac.compare_digest(got, want)
+
     def _cors(self, origin: str) -> None:
         self.send_header("Access-Control-Allow-Origin", origin or "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers",
+                         f"Content-Type, {TOKEN_HEADER}")
         self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
         self.send_header("Vary", "Origin")
 
@@ -466,7 +505,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/cookies":
             origin = self._ext_origin()
             ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
-            if origin is None or ctype != "application/json":
+            if origin is None or ctype != "application/json" or not self._token_ok():
                 self._send(403, b"forbidden", "text/plain")
                 return
             ok, msg = MANAGER.accept_cookies(self._read_json().get("cookies"))
@@ -480,6 +519,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(body_b)
             except (BrokenPipeError, ConnectionResetError, OSError):
                 pass
+            return
+
+        # всё остальное — команды очереди, и их отдаёт только наша страница
+        if not self._same_origin():
+            self._send(403, b"forbidden", "text/plain")
             return
 
         body = self._read_json()

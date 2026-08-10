@@ -98,6 +98,14 @@ def _kiwi() -> int:
         print("!! нет папки web/kiwi-extension — обнови проект: git pull")
         return 1
 
+    # Токен установки зашиваем в собранный .zip. Без него сервер откажет: проверки
+    # «origin = chrome-extension://» мало, она не отличает НАШЕ расширение от
+    # любого другого в том же браузере, а тут отдают доступ к аккаунту.
+    token = config.api_token()
+    if not token:
+        print("!! не смог создать .api-token — проверь права на папку проекта")
+        return 1
+
     targets = [Path(os.path.expanduser(d)) for d in
                ("/storage/emulated/0/Download", "~/storage/downloads")]
     dest_dir = next((d for d in targets if d.is_dir()), config.ROOT)
@@ -106,7 +114,15 @@ def _kiwi() -> int:
     try:
         with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
             for f in sorted(src.iterdir()):
-                if f.is_file():
+                if not f.is_file():
+                    continue
+                if f.name == "popup.js":
+                    body = f.read_text(encoding="utf-8")
+                    if "__TY_TOKEN__" not in body:
+                        print("!! в popup.js нет метки __TY_TOKEN__ — обнови проект")
+                        return 1
+                    z.writestr(f.name, body.replace("__TY_TOKEN__", token))
+                else:
                     z.write(f, f.name)      # без вложенной папки: Kiwi ждёт manifest в корне
     except OSError as ex:
         print(f"!! не собралось: {ex}")

@@ -11,6 +11,13 @@
 const ENDPOINT = "http://127.0.0.1:8765/api/cookies";
 const DOMAINS = ["youtube.com", "google.com"];   // SAPISID живёт на google.com
 
+/* Токен установки. Подставляется при сборке .zip (python main.py kiwi) — в
+ * репозитории лежит заглушка, поэтому склонированное расширение чужую качалку
+ * не откроет. Заголовок с токеном ещё и делает запрос «непростым»: браузер
+ * обязан сперва спросить preflight, а его сервер даёт только расширению. */
+const TOKEN = "__TY_TOKEN__";
+const TOKEN_HEADER = "X-TermuxYoutube-Token";
+
 const msg = document.getElementById("msg");
 const again = document.getElementById("again");
 
@@ -75,9 +82,15 @@ async function send() {
   try {
     const r = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", [TOKEN_HEADER]: TOKEN },
       body: JSON.stringify({ cookies }),
     });
+    if (r.status === 403) {
+      show("Качалка не признала расширение",
+           "пересобери его: python main.py kiwi", "err");
+      again.disabled = false;
+      return;
+    }
     const data = await r.json();
     if (data.ok) show("Готово ✓", data.msg || "", "ok");
     else show("Качалка отказала", data.msg || "", "err");

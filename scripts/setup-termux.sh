@@ -33,11 +33,16 @@ pkg install -y python-pip || true
 pip install --upgrade yt-dlp textual rich
 
 # JS-движок: YouTube шифрует ссылки через JS (n-challenge). Без рантайма
-# yt-dlp выдаёт "Only images are available". deno — рекомендованный для EJS,
-# nodejs — рабочая замена там, где deno не встаёт.
+# yt-dlp выдаёт "Only images are available".
+#
+# deno лежит в ГЛАВНОМ репозитории Termux (проверено по индексу пакетов: версия
+# 1:2.9.4, ~93 МБ) — tur-repo для него не нужен. Но собран он только под
+# aarch64 и x86_64: на 32-битных armv7 его нет, там берём nodejs или quickjs-ng
+# (последний ~1.5 МБ). yt-dlp разрешено использовать любой из них —
+# см. config.JS_RUNTIMES, без этого он искал бы только deno.
 echo ">> [4b/5] JS-движок для обхода n-challenge YouTube"
-pkg install -y deno || pkg install -y nodejs || \
-    echo "   !! поставь вручную: pkg install deno (или nodejs)"
+pkg install -y deno || pkg install -y nodejs || pkg install -y quickjs-ng || \
+    echo "   !! поставь вручную любой: pkg install deno / nodejs / quickjs-ng"
 
 echo ">> [5/5] Ярлык на домашний экран (Termux:Widget)"
 chmod +x "$DIR"/scripts/*.sh 2>/dev/null || true

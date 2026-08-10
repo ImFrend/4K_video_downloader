@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import time
 from pathlib import Path
 
@@ -125,10 +126,48 @@ MIX_SNAPSHOT_LIMIT = 25
 
 # ── EJS: решатель JS-challenge YouTube ──
 # YouTube шифрует ссылки на потоки через JS (n-challenge / signature). Нужен:
-#   1) JS-рантайм (deno или nodejs) — ставится в системе;
+#   1) JS-рантайм — ставится в системе (см. JS_RUNTIMES ниже);
 #   2) скрипт-решатель EJS, который yt-dlp качает с GitHub (кешируется 1 раз).
 # Без этого yt-dlp видит "Only images are available". Пусто [] — отключить.
 REMOTE_COMPONENTS = ["ejs:github"]
+
+# Какие JS-рантаймы РАЗРЕШИТЬ yt-dlp. Не «какой выбрать»: приоритет задаёт сам
+# yt-dlp (deno > node > quickjs > bun) и берёт первый доступный.
+#
+# Перечислять надо все, потому что по умолчанию yt-dlp включает ТОЛЬКО deno.
+# Из-за этого установщик врал: строка `pkg install deno || pkg install nodejs`
+# выглядела как запасной путь, а на деле поставленный nodejs не использовался
+# вовсе — yt-dlp его не искал. Это важно на armv7: deno собран только под
+# aarch64/x86_64, и там fallback — единственный рабочий вариант.
+#
+# Опция появилась в yt-dlp 2025.x; на более старых она просто игнорируется.
+JS_RUNTIMES = ["deno", "node", "quickjs", "bun"]
+
+# ── Токен для приёма cookies от расширения ──
+# Один локальный секрет на установку. Нужен потому, что проверки «origin =
+# chrome-extension://» мало: она отсекает веб-страницы, но не ЧУЖОЕ расширение,
+# стоящее в том же браузере, — а на этом эндпоинте отдают доступ к аккаунту.
+# Токен зашивается внутрь .zip при сборке (python main.py kiwi), поэтому чужому
+# расширению его негде взять. Файл не коммитится; удалил — просто пересобери zip.
+API_TOKEN_FILE = ROOT / ".api-token"
+
+
+def api_token() -> str:
+    """Токен установки. Создаётся при первом обращении, дальше читается."""
+    try:
+        tok = API_TOKEN_FILE.read_text(encoding="utf-8").strip()
+        if tok:
+            return tok
+    except OSError:
+        pass
+    tok = secrets.token_urlsafe(24)
+    try:
+        API_TOKEN_FILE.write_text(tok, encoding="utf-8")
+        API_TOKEN_FILE.chmod(0o600)      # сосед по устройству его не прочитает
+    except OSError:
+        return ""                        # некуда записать — эндпоинт закрыт совсем
+    return tok
+
 
 # ── Web-UI (localhost, 100% on-device) ──
 # Лёгкий сервер на stdlib (без зависимостей) → отдаёт страницу, браузер телефона

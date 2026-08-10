@@ -96,6 +96,9 @@ class DownloadManager:
         if config.REMOTE_COMPONENTS:
             # разрешить yt-dlp скачать EJS-решатель JS-challenge (n-sig)
             opts["remote_components"] = list(config.REMOTE_COMPONENTS)
+        if config.JS_RUNTIMES:
+            # без этого включён только deno, и поставленный nodejs не берётся
+            opts["js_runtimes"] = list(config.JS_RUNTIMES)
         return opts
 
     @contextlib.contextmanager
