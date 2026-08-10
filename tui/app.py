@@ -125,7 +125,8 @@ class TermuxYoutube(App):
         warn_icon = "" if config.NERD_FONT else "⚠"   #  warning
         if config.have_cookies():
             return f"{ok_icon}  вход активен — приватные плейлисты доступны"
-        return f"{warn_icon}  без cookies — приватные плейлисты не видны (нужен вход)"
+        # чинится не «входом» где-то внутри, а тапом по расширению в браузере
+        return f"{warn_icon}  без cookies — приватное и миксы не видны (python main.py kiwi)"
 
     # ── запуск ──
     @on(Button.Pressed, "#go")

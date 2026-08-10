@@ -4,13 +4,15 @@ TermuxYoutube — точка входа.
 
   python main.py            запустить TUI (основной режим)
   python main.py web        web-UI на localhost (открой в браузере телефона)
-  python main.py login      вход в Google — одной командой, окно откроется,
-                            только если сохранённая сессия уже мертва
-  python main.py refresh    обновить cookies (сам сходит в браузер-слой)
-  python main.py doctor     проверить зависимости: что стоит, чего не хватает
-  python main.py cookies    взять cookies из браузера телефона (см. README)
   python main.py kiwi       собрать расширение для Kiwi (cookies одним тапом)
+  python main.py cookies    взять cookies файлом-экспортом (если без расширения)
+  python main.py check      жива ли сессия YouTube (один GET, без браузера)
+  python main.py doctor     проверить зависимости: что стоит, чего не хватает
   python main.py grab URL   скачать без TUI (CLI-режим, для отладки)
+
+Входа «внутри приложения» нет намеренно: вход живёт в браузере телефона, откуда
+приезжают cookies. Ради своего браузера тут когда-то стоял слой на proot +
+Debian + ARM-Chromium (~2 ГБ) — он не давал ничего, кроме веса.
 """
 from __future__ import annotations
 
@@ -71,10 +73,10 @@ def _cookies(args: list) -> int:
         print(f"✗  {src}: {msg}")
         return 1
 
-    config.mark_cookies_external(str(src))
+    config.mark_cookies_source(f"файл {src.name}")
     print(f"✓  Взял cookies из {src} — {msg}")
     print("   Миксы теперь будут такими же, как в этом браузере.")
-    print("   Авто-обновление их не тронет; когда устареют, повтори эту команду.")
+    print("   Когда сессия истечёт (python main.py check), повтори эту команду.")
     return 0
 
 
@@ -138,20 +140,15 @@ def main() -> int:
 
     _warn_stale_setup()
 
-    if cmd == "login":
-        # на телефоне это scripts/login.sh (X11 + proot берёт на себя он),
-        # на десктопе — прямой запуск auth.login
-        from auth.bridge import run_login
-        return run_login(sys.argv[2:])
-
     if cmd == "web":
         from web.server import serve
         no_open = "--no-open" in sys.argv
         return serve(open_browser=not no_open)
 
-    if cmd == "refresh":
-        from auth.refresh import main as refresh_main
-        return refresh_main()
+    # refresh — прежнее имя той же команды, оставлено для мышечной памяти
+    if cmd in ("check", "refresh"):
+        from auth.refresh import main as check_main
+        return check_main()
 
     if cmd == "grab":
         if len(sys.argv) < 3:

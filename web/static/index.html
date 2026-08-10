@@ -100,7 +100,7 @@
     <div class="sheet">
       <div class="sheet-grip"></div>
       <p class="sheet-note warn" id="setupNote" hidden></p>
-      <h2>Вход в Google</h2>
+      <h2>Аккаунт</h2>
       <div class="ck-row">
         <span class="ck-dot" id="ckDot"></span>
         <span id="ckMsg">—</span>
@@ -112,13 +112,12 @@
         <span id="authMsg">—</span>
       </div>
       <p class="sheet-note">
-        Обновление cookies — <b>автоматическое</b>, по времени, без кнопок.
-        Кнопка нужна <b>редко</b>: если сессия ещё жива, окна не будет вообще —
-        просто обновятся cookies. Если истекла — телефон сам откроет
-        <b>Termux:X11</b> с формой Google, а как войдёшь, окно закроется само.
+        Вход живёт в <b>браузере телефона</b>, а не здесь. Открой YouTube в Kiwi
+        и тапни иконку расширения — cookies приедут сюда сами. Заодно миксы
+        будут ровно те, что видно в этом браузере: состав микса определяется
+        сессией.
       </p>
-      <button class="sheet-go" id="renewBtn" hidden>Продлить cookies</button>
-      <button class="sheet-go" id="loginBtn">Войти в Google</button>
+      <button class="sheet-go" id="checkBtn">Проверить сессию</button>
       <pre class="log" id="loginLog" hidden></pre>
       <p class="sheet-note dim" id="authHint"></p>
       <button class="sheet-close" id="sheetClose">Понятно</button>

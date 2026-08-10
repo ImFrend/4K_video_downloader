@@ -2,10 +2,12 @@
 #
 # На телефоне руками ставить НИЧЕГО не надо — всё делает одна команда:
 #   bash scripts/setup-termux.sh
-# (она же ставит браузер-слой внутрь proot-distro/Debian).
 #
 # Этот файл нужен для десктопа/CI:  pip install -r requirements.txt
 # Web-UI зависимостей не имеет вообще — он на stdlib (http.server).
+# Auth тоже: cookies приезжают из браузера телефона, а проверка сессии —
+# один GET через urllib (см. auth/refresh.py). Playwright отсюда убран вместе
+# с браузер-слоем: он тянул ~2 ГБ proot+Debian+Chromium и портил состав миксов.
 
 # Ядро: загрузка (нативный Termux)
 yt-dlp>=2024.1.0
@@ -13,7 +15,3 @@ yt-dlp>=2024.1.0
 # TUI (премиум-интерфейс в терминале, нативный Termux)
 textual>=0.50.0
 rich>=13.0.0
-
-# Auth-слой (браузер для приватных плейлистов).
-# На телефоне ставится ВНУТРИ proot-distro/Debian, не в голом Termux.
-playwright>=1.40.0

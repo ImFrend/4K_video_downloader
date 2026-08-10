@@ -7,8 +7,8 @@
 """
 from __future__ import annotations
 
+import json
 import os
-import sys
 import time
 from pathlib import Path
 
@@ -37,69 +37,19 @@ else:
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Auth / cookies ──
-# Профиль браузера (persistent) — сюда сохраняется сессия после ручного входа.
-BROWSER_PROFILE_DIR = ROOT / "auth" / "profile"
 # Экспортированные cookies в формате Netscape — их ест yt-dlp.
+#
+# Источник ровно один: браузер телефона (расширение для Kiwi либо файл-экспорт).
+# Своего браузера внутри проекта нет и не будет — он давал только вес. Замер на
+# устройстве: состав RD-микса определяется идентичностью сессии в cookies, и с
+# cookies того браузера, где ты смотришь миксы, yt-dlp повторяет его список
+# 25 из 25 — против 2 из 25 с сессией, поднятой отдельным Chromium.
 COOKIES_FILE = ROOT / "cookies.txt"
-# Метка «cookies принесены извне» (экспорт из браузера телефона), с датой импорта.
-# Пока она стоит, cookies.txt НЕ трогает ни авто-обновление, ни браузер-слой:
-# состав микса определяется идентичностью сессии, и перезапись профилем из
-# Debian молча подменила бы станцию на чужую.
-COOKIES_EXTERNAL_MARK = ROOT / ".cookies-external"
-
-# Флаги Chromium для proot/Termux-X11.
-# Чёрный экран в Termux:X11 = падает GL-инициализация. Лечение (проверено на S23):
-# софт-рендер через SwiftShader. ВАЖНО: НЕ сочетать с --disable-gpu — он убивает
-# GPU-процесс, в котором и работает SwiftShader, и экран снова чернеет.
-CHROMIUM_ARGS = [
-    "--no-sandbox",
-    "--disable-dev-shm-usage",
-    "--use-gl=swiftshader",          # софт-рендер GL (лечит чёрный экран)
-    "--enable-unsafe-swiftshader",   # новые Chromium без этого выключают SwiftShader
-    "--disable-blink-features=AutomationControlled",  # скрыть navigator.webdriver → Google не блокирует вход
-    "--disable-quic",                # proot режет UDP → форсим TCP-TLS (лечит SSL reset)
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--test-type",                   # без назойливых инфобаров
-]
-
-# Путь к СИСТЕМНОМУ Chromium (ARM-сборка из apt внутри Debian).
-# Нужен, чтобы Playwright НЕ качал свой x86-бинарь, который не запустится на телефоне.
-# Ставится setup-debian.sh; пусто на десктопе — Playwright возьмёт свой браузер.
-CHROMIUM_EXECUTABLE = (
-    os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
-    or os.environ.get("CHROMIUM_PATH")
-    or ""
-)
-
-# ── Мост Termux ⇄ Debian (см. auth/bridge.py) ──
-# Качалка живёт в НАТИВНОМ Termux, браузер — в proot-distro/Debian. Раньше между
-# этими мирами ходил ты руками (login/cd/exit). Теперь ходит код.
-PROOT_DISTRO = os.environ.get("TY_PROOT_DISTRO", "debian")
-# Куда монтируется папка проекта внутри Debian. Тот же контент — другой путь,
-# поэтому cookies.txt из браузера сразу виден качалке в Termux.
-PROOT_MOUNT = f"/root/{ROOT.name}"
-# Разрешить нативному Termux самому дёргать headless-refresh через proot.
-# TY_AUTO_PROOT=0 — вернуть старое поведение (только предупреждение).
-AUTO_REFRESH_VIA_PROOT = (
-    os.environ.get("TY_AUTO_PROOT", "1").lower() not in ("0", "false", "no")
-)
-# Сколько ждать headless-обновление cookies через proot (сек). proot стартует
-# медленно (~10-30с на телефоне), плюс сам заход на YouTube.
-PROOT_REFRESH_TIMEOUT = 240
-# Сколько ждать снимок очереди микса браузером (сек): старт proot + загрузка
-# страницы YouTube + дорисовка очереди.
-PROOT_MIX_TIMEOUT = 210
-# Брать состав микса из БРАУЗЕРА, а не из yt-dlp.
-# Проверено на устройстве: RD-микс привязан к сессии браузера, а не к аккаунту —
-# при валидных cookies и любом клиенте плеера yt-dlp получает свою станцию
-# (совпало 2 трека из 25). Поэтому состав спрашиваем у того, кто его показывает.
-# TY_MIX_BROWSER=0 — вернуть прежнее поведение (быстрее, но список будет другим).
-MIX_FROM_BROWSER = (
-    os.environ.get("TY_MIX_BROWSER", "1").lower() not in ("0", "false", "no")
-)
-# Сколько ждать, пока ты введёшь пароль/2FA в видимом окне (сек).
-LOGIN_WAIT_TIMEOUT = 900
+# Откуда и когда приехали cookies + когда сессию последний раз проверяли живьём.
+# Возраст файла — плохой признак: cookies могут быть свежими и уже мёртвыми
+# (аккаунт разлогинили) или недельными и рабочими. Поэтому храним результат
+# настоящей проверки, а не только время записи.
+COOKIES_STATE_FILE = ROOT / ".cookies-state"
 
 # ── Внешний вид ──
 # Nerd Font иконки в TUI. Требуют установленного Nerd Font в терминале.
@@ -129,8 +79,12 @@ PROGRESS_THROTTLE_SEC = 0.1
 SLEEP_MIN = 2              # сек, минимальная пауза между треками
 SLEEP_MAX = 5              # сек, максимальная
 
-# Авто-refresh: если cookies старше этого — обновить (в Debian) / предупредить (в Termux).
+# Как часто перепроверять сессию у YouTube (часы). Проверка — один GET, поэтому
+# интервал маленький ничего не стоит; смысл в том, чтобы не дёргать сеть на
+# каждый трек.
 COOKIES_MAX_AGE_HOURS = 12
+# Таймаут этой проверки (сек). Нет сети — молча работаем с тем, что есть.
+COOKIES_CHECK_TIMEOUT = 15
 
 # ── Дедупликация ──
 # Не качать один и тот же трек дважды (по video id): и внутри одного запуска,
@@ -219,25 +173,40 @@ def have_cookies() -> bool:
     return COOKIES_FILE.exists() and COOKIES_FILE.stat().st_size > 0
 
 
-def cookies_are_external() -> bool:
-    """cookies принесены из другого браузера — трогать их автоматике нельзя."""
-    return COOKIES_EXTERNAL_MARK.exists() and have_cookies()
-
-
-def mark_cookies_external(source: str) -> None:
+# ── состояние cookies: откуда приехали и когда сессию видели живой ──
+# Формат — одна строка JSON. Файл целиком служебный: пропал или побился —
+# считаем, что проверок не было, и просто проверим заново.
+def read_cookies_state() -> dict:
     try:
-        COOKIES_EXTERNAL_MARK.write_text(
-            f"{source}\n{time.strftime('%Y-%m-%d %H:%M')}\n", encoding="utf-8")
+        data = json.loads(COOKIES_STATE_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_cookies_state(**fields) -> None:
+    state = read_cookies_state() | fields
+    try:
+        COOKIES_STATE_FILE.write_text(
+            json.dumps(state, ensure_ascii=False), encoding="utf-8")
     except OSError:
         pass
 
 
-def unmark_cookies_external() -> None:
-    """Вход через браузер-слой снова делает хозяином профиль в Debian."""
-    try:
-        COOKIES_EXTERNAL_MARK.unlink()
-    except OSError:
-        pass
+def mark_cookies_source(source: str) -> None:
+    """Запомнить, откуда приехали cookies. Проверку сбрасываем: сессия другая."""
+    _write_cookies_state(source=source,
+                         imported=time.strftime("%Y-%m-%d %H:%M"),
+                         checked_at=0, alive=None)
+
+
+def mark_cookies_checked(alive: bool) -> None:
+    """Запомнить результат живой проверки сессии (см. auth/refresh.py)."""
+    _write_cookies_state(checked_at=int(time.time()), alive=bool(alive))
+
+
+def cookies_source() -> str:
+    return str(read_cookies_state().get("source") or "")
 
 
 # ── Версия набора зависимостей ──
@@ -251,8 +220,9 @@ def unmark_cookies_external() -> None:
 # запуском установщика.
 #
 # История: v1 — исходный набор; v2 — termux-am и termux-x11-nightly (нужны
-# автозапуску Termux:X11 при входе; раньше ставились на лету посреди входа).
-SETUP_VERSION = 2
+# автозапуску Termux:X11 при входе); v3 — браузер-слой убран целиком, набор
+# сжался до нативного Termux (python, ffmpeg, git, termux-api, JS-рантайм).
+SETUP_VERSION = 3
 SETUP_STAMP = ROOT / ".setup-stamp"
 
 

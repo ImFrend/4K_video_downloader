@@ -7,10 +7,9 @@
     даже самом слабом/старом телефоне. Рисует браузер телефона, не сервер.
   • Очередь до 5 My Mix. Параллелизм: N плейлистов × M треков (по умолчанию 3×2=6),
     человеческий темп: ramp-up/джиттер старта + пауза между плейлистами.
-  • Никакой кнопки refresh: cookies обновляются сами, по времени, невидимо
-    (нативный Termux ходит в браузер-слой сам — см. auth/bridge.py).
-  • Вход в Google — одной кнопкой в ⚙: сервер сам поднимет X11, откроет
-    Termux:X11 и покажет форму. Ни одной команды в терминале.
+  • Вход не через нас: cookies присылает расширение браузера (POST /api/cookies).
+    Сервер только проверяет, жива ли сессия, и говорит об этом прямо — своего
+    браузера у проекта нет (см. auth/refresh.py, там же почему).
 
 Запуск:  python main.py web     (или тап по виджету TermuxYoutube)
 """
@@ -28,10 +27,10 @@ from typing import Optional
 
 import config
 from core.downloader import DownloadManager, Track
-from auth import bridge
 from auth.cookies_export import (cookies_to_netscape, netscape_has_auth,
                                  validate_netscape)
-from auth.refresh import cookies_age_hours, ensure_fresh_cookies
+from auth.refresh import ensure_fresh_cookies, probe_session
+from auth.refresh import status as cookie_status
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -79,7 +78,7 @@ class JobManager:
         self.version = 0          # дёргается при любом изменении → триггер SSE
         self.dm = DownloadManager()
         self.cookies = {"status": "", "msg": ""}
-        # состояние входа: idle | running | ok | error (+ хвост лога для UI)
+        # состояние проверки сессии: idle | running | ok | error (+ текст для UI)
         self.auth = {"state": "idle", "msg": "", "log": []}
         # окружение против версии кода (после git pull зависимости могут отстать)
         _setup_ok, _setup_msg = config.setup_is_current()
@@ -93,17 +92,10 @@ class JobManager:
         self.version += 1
 
     def _refresh_cookie_status(self) -> None:
-        age = cookies_age_hours()
-        if age is None:
-            self.cookies = {"status": "none", "msg": "вход не выполнен"}
-        elif age > config.COOKIES_MAX_AGE_HOURS:
-            self.cookies = {"status": "stale", "msg": f"устарели ({age:.0f}ч)"}
-        else:
-            self.cookies = {"status": "fresh", "msg": f"свежие ({age:.1f}ч)"}
-        # под аккаунтом или анонимно — от этого зависит, стабилен ли микс
-        self.cookies["auth"] = netscape_has_auth(config.COOKIES_FILE)
-        # откуда cookies: состав микса определяется именно этим
-        self.cookies["external"] = config.cookies_are_external()
+        # Не «сколько файлу часов», а результат живой проверки: свежий файл с
+        # мёртвой сессией — обычное дело, и раньше индикатор в этом случае врал
+        # зелёным. Сеть здесь не дёргаем, читаем уже известное.
+        self.cookies = cookie_status()
 
     # ---- cookies из браузера (расширение для Kiwi) ----
     def accept_cookies(self, raw: list) -> tuple[bool, str]:
@@ -138,74 +130,41 @@ class JobManager:
             except OSError:
                 pass
 
-        config.mark_cookies_external("расширение браузера")
+        config.mark_cookies_source("расширение браузера")
         with self.lock:
             self._refresh_cookie_status()
             self._bump()
+        # сессия новая — сразу спросим YouTube, узнаёт ли он её. Так человек
+        # видит результат тапа по расширению, а не «файл записан».
+        self.start_check()
         return True, msg
 
-    # ---- продлить cookies, не меняя их источник ----
-    def start_renew(self) -> tuple[bool, str]:
+    # ---- проверить, жива ли сессия ----
+    def start_check(self) -> tuple[bool, str]:
         """
-        Обновить cookies тем же способом, каким они получены.
+        Спросить YouTube, узнаёт ли он наши cookies. Один GET, без браузера.
 
-        Отдельно от входа намеренно: при внешних cookies вход через Debian
-        перезаписал бы файл профилем proot и сменил станцию микса на чужую —
-        то есть одной кнопкой откатил бы всю настройку.
+        Кнопки «войти» здесь нет намеренно: вход живёт в браузере телефона, а
+        мёртвую сессию чинит повторный тап по иконке расширения. Держать ради
+        этого свой Chromium (proot + Debian, ~2 ГБ) было незачем.
         """
         with self.lock:
             if self.auth.get("state") == "running":
                 return False, "уже идёт"
-            self.auth = {"state": "running", "msg": "продлеваю cookies…", "log": []}
+            self.auth = {"state": "running", "msg": "спрашиваю YouTube…", "log": []}
             self._bump()
-        threading.Thread(target=self._renew_worker, daemon=True).start()
+        threading.Thread(target=self._check_worker, daemon=True).start()
         return True, "ok"
 
-    def _renew_worker(self) -> None:
+    def _check_worker(self) -> None:
         try:
-            code, msg = ensure_fresh_cookies(max_age_hours=0)   # 0 = «прямо сейчас»
+            code, msg = probe_session()
         except Exception as ex:  # noqa: BLE001
-            code, msg = "refresh_failed", _short(ex)
+            code, msg = "offline", _short(ex)
         with self.lock:
-            self.auth["state"] = "ok" if code in ("refreshed", "fresh") else "error"
+            self.auth["state"] = "ok" if code == "alive" else "error"
             self.auth["msg"] = msg
             self.auth["log"] = [msg]
-            self._refresh_cookie_status()
-            self._bump()
-
-    # ---- вход в Google (одна кнопка вместо шести команд) ----
-    def start_login(self, force: bool = False) -> tuple[bool, str]:
-        """Запускает умный вход в фоне. Окно откроется, только если сессия мертва."""
-        with self.lock:
-            if self.auth.get("state") == "running":
-                return False, "вход уже идёт"
-            self.auth = {"state": "running", "msg": "проверяю сохранённую сессию…",
-                         "log": []}
-            self._bump()
-        threading.Thread(target=self._login_worker, args=(force,), daemon=True).start()
-        return True, "ok"
-
-    def _login_worker(self, force: bool) -> None:
-        def on_line(line: str) -> None:
-            with self.lock:
-                log = list(self.auth.get("log", []))
-                log.append(line)
-                self.auth["log"] = log[-6:]
-                self.auth["msg"] = line
-                self._bump()
-
-        rc = 1
-        try:
-            rc = bridge.stream_login(on_line, ["--force"] if force else [])
-        except Exception as ex:  # noqa: BLE001
-            on_line(f"!! {_short(ex)}")
-        with self.lock:
-            ok = (rc == 0 and config.have_cookies())
-            self.auth["state"] = "ok" if ok else "error"
-            if ok:
-                self.auth["msg"] = "вход сохранён ✓"
-            elif not self.auth.get("msg"):
-                self.auth["msg"] = f"вход не завершён (код {rc})"
             self._refresh_cookie_status()
             self._bump()
 
@@ -298,13 +257,13 @@ class JobManager:
         # floor → суммарно потоков не больше слайдера (он = потолок риска)
         tracks_per = max(1, min(config.WEB_MAX_TRACKS_PER_PLAYLIST, streams // pl_conc))
 
-        # cookies: тихий авто-refresh по времени (без кнопки), один раз перед стартом.
-        # Если прямо сейчас идёт вход — не лезем вторым Chromium в тот же профиль.
+        # cookies: тихая проверка сессии один раз перед стартом — чтобы «микс
+        # приехал случайный» выяснялось до загрузки, а не после.
         try:
             if self.auth.get("state") != "running":
                 code, msg = ensure_fresh_cookies()
                 with self.lock:
-                    self.cookies = {"status": code, "msg": msg}
+                    self.cookies = cookie_status() | {"status": code, "msg": msg}
                     self._bump()
         except Exception:  # noqa: BLE001
             pass
@@ -537,11 +496,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/remove":
             MANAGER.remove(int(body.get("id", 0)))
             self._json({"ok": True})
-        elif path == "/api/login":
-            ok, msg = MANAGER.start_login(force=bool(body.get("force")))
-            self._json({"ok": ok, "msg": msg})
-        elif path == "/api/renew":
-            ok, msg = MANAGER.start_renew()
+        elif path == "/api/check":
+            ok, msg = MANAGER.start_check()
             self._json({"ok": ok, "msg": msg})
         else:
             self._send(404, b"not found", "text/plain")

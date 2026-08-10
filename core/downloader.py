@@ -223,19 +223,12 @@ class DownloadManager:
         if ids:                              # вставили список видео, а не ссылку
             return self._probe_ids(ids)
 
-        # Микс: RD-станция привязана к идентичности сессии в cookies.
-        #   • cookies принесены из твоего браузера → yt-dlp воспроизводит ЕГО
-        #     станцию сам (проверено: 25 из 25), браузер-слой не нужен;
-        #   • cookies из профиля в Debian → у yt-dlp своя станция, не та, что
-        #     видно в YouTube. Тогда состав спрашиваем у браузер-слоя.
-        # Не вышло (нет proot, очередь не отдалась) — работаем как раньше.
-        if config.MIX_FROM_BROWSER and self._is_mix(url) \
-                and not config.cookies_are_external():
-            from auth import bridge
-            snap = bridge.mix_snapshot(url)
-            if len(snap) >= 2:
-                return self._probe_ids(snap[:config.MIX_SNAPSHOT_LIMIT])
-
+        # Микс: RD-станция привязана к идентичности сессии в cookies — и это
+        # решает всё. С cookies того браузера, где ты смотришь миксы, yt-dlp
+        # воспроизводит ЕГО станцию сам (проверено: 25 из 25). Раньше здесь была
+        # ветка «снять очередь браузером в proot» — она существовала ровно
+        # потому, что сессию поднимал отдельный Chromium и станция получалась
+        # чужая (2 из 25). Источник cookies один — ветка не нужна.
         url = self._normalize_mix_url(url)   # My Mix `playlist?list=RD…` → watch?v=<сид>&list=…
         opts = self._base_opts() | {
             "skip_download": True,

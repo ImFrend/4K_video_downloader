@@ -377,30 +377,17 @@ function renderCookies() {
   // главный вопрос при разъезжающихся миксах: мы под аккаунтом или анонимно
   const ok = c.auth === true;
   E("authDot").className = "ck-dot " + (ok ? "fresh" : "none");
-  E("authMsg").textContent = !ok
-    ? "аккаунт не подтверждён — микс будет случайным"
-    : c.external
-      ? "cookies из твоего браузера — миксы как в нём"
-      : "вход через Debian — у миксов будет своя станция";
+  E("authMsg").textContent = ok
+    ? "cookies из твоего браузера" + (c.source ? ` (${c.source})` : "")
+    : "аккаунт не подтверждён — микс будет случайным";
 }
 
-// ─────────── вход одной кнопкой ───────────
-// Сервер сам решит: сессия жива → тихо обновит cookies (окна не будет),
-// мертва → поднимет X11, откроет Termux:X11 и покажет форму Google.
-E("loginBtn").addEventListener("click", async () => {
-  if (E("loginBtn").disabled) return;
-  // при внешних cookies вход через Debian перезапишет их профилем proot и
-  // сменит станцию микса — спрашиваем, а не делаем молча
-  if ((state.cookies || {}).external === true &&
-      !confirm("Вход через Debian заменит cookies из твоего браузера. " +
-               "Миксы станут другими. Продолжить?")) return;
-  const r = await api("/api/login");
-  if (!r.ok) hint(r.msg || "вход не запустился", "err");
-});
-
-E("renewBtn").addEventListener("click", async () => {
-  if (E("renewBtn").disabled) return;
-  const r = await api("/api/renew");
+// ─────────── проверка сессии ───────────
+// Один GET к YouTube: узнаёт он наши cookies или нет. Своего браузера у проекта
+// нет — мёртвую сессию чинит повторный тап по иконке расширения в Kiwi.
+E("checkBtn").addEventListener("click", async () => {
+  if (E("checkBtn").disabled) return;
+  const r = await api("/api/check");
   if (!r.ok) hint(r.msg || "не запустилось", "err");
 });
 
@@ -415,24 +402,16 @@ function renderSetup() {
 
 function renderAuth() {
   const a = state.auth || {};
-  const btn = E("loginBtn"), renew = E("renewBtn"), log = E("loginLog");
+  const btn = E("checkBtn"), log = E("loginLog");
   const busy = a.state === "running";
-  // два режима, и действия у них разные: продлить свою сессию либо завести новую
-  const ext = (state.cookies || {}).external === true;
-
-  renew.hidden = !ext;
-  renew.disabled = busy;
-  renew.textContent = busy ? "Продлеваю…" : "Продлить cookies";
+  const dead = (state.cookies || {}).status === "dead";
 
   btn.disabled = busy;
-  btn.classList.toggle("alt", ext);        // в режиме браузера это запасной путь
-  btn.textContent = ext
-    ? "Войти через Debian (сменит миксы)"
-    : (busy ? "Вхожу…" : (a.state === "ok" ? "Войти ещё раз" : "Войти в Google"));
+  btn.textContent = busy ? "Спрашиваю YouTube…" : "Проверить сессию";
 
-  E("authHint").textContent = ext
-    ? "cookies приходят из твоего браузера — обновить их можно тапом по иконке расширения в Kiwi"
-    : "сменить аккаунт: bash scripts/login.sh --force";
+  E("authHint").textContent = dead
+    ? "открой YouTube в Kiwi и тапни иконку расширения — этого достаточно"
+    : "расширение не поставлено? собери его: python main.py kiwi";
 
   const lines = a.log || [];
   log.hidden = lines.length === 0;

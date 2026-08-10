@@ -1,20 +1,22 @@
 """
 Работа с файлом cookies.txt (формат Netscape — его ест yt-dlp):
 
-  • конвертер из cookies Playwright: domain flag path secure expiry name value;
+  • конвертер из объектов cookie браузера (как их отдаёт chrome.cookies в
+    расширении): domain flag path secure expiry name value;
+  • разбор обратно — им пользуется проверка сессии (auth/refresh.py);
   • проверка, есть ли в готовом файле маркеры входа;
-  • импорт файла, выгруженного из ДРУГОГО браузера.
+  • импорт файла, выгруженного из браузера телефона.
 
-Про импорт. Проверено на устройстве: состав RD-микса определяется идентичностью
-сессии в cookies — yt-dlp с cookies из Kiwi выдал ровно её список, 25 из 25,
-хотя с cookies профиля из Debian давал свой (2 из 25). Значит принеся cookies
-того браузера, где ты смотришь миксы, всё сводится к одной станции.
+Почему cookies берутся из твоего браузера, а не из своего. Проверено на
+устройстве: состав RD-микса определяется идентичностью сессии в cookies —
+yt-dlp с cookies из Kiwi выдал ровно её список, 25 из 25, а с сессией,
+поднятой отдельным Chromium, свой (2 из 25). Значит нужен именно тот браузер,
+где ты смотришь миксы, — и держать свой смысла нет.
 """
 from __future__ import annotations
 
 import os
 import shutil
-import time
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
@@ -31,12 +33,6 @@ NETSCAPE_HEADER = (
 AUTH_MARKERS = {"SID", "SAPISID", "__Secure-1PSID", "__Secure-3PSID", "__Secure-1PSIDTS"}
 
 
-def has_auth_cookies(cookies: Iterable[dict]) -> bool:
-    """True, если среди cookies есть маркеры авторизованной сессии Google."""
-    names = {c.get("name", "") for c in cookies}
-    return bool(AUTH_MARKERS & names)
-
-
 def netscape_has_auth(path: Path) -> bool:
     """
     Есть ли в готовом cookies.txt маркеры входа.
@@ -45,6 +41,11 @@ def netscape_has_auth(path: Path) -> bool:
     зависит поведение микса: под аккаунтом выдача персональная и стабильная,
     анонимно — случайное радио от сида, каждый запрос новый. Без такой проверки
     разницу приходится угадывать по составу скачанного.
+
+    Префикс `#HttpOnly_` снимаем ДО отбрасывания комментариев. Иначе теряются
+    ровно те строки, которые тут и ищутся: SID и __Secure-* помечены httpOnly,
+    и сторонние экспортёры (путь `python main.py cookies`) пишут их с этим
+    префиксом — рабочий файл отвергался с «нет маркеров входа».
     """
     try:
         txt = path.read_text(encoding="utf-8", errors="replace")
@@ -53,6 +54,8 @@ def netscape_has_auth(path: Path) -> bool:
     names = set()
     for line in txt.splitlines():
         line = line.strip()
+        if line.startswith(HTTPONLY_PREFIX):
+            line = line[len(HTTPONLY_PREFIX):]
         if not line or line.startswith("#"):
             continue
         parts = line.split("\t")
@@ -63,11 +66,13 @@ def netscape_has_auth(path: Path) -> bool:
 
 def netscape_to_cookies(path: Path) -> List[dict]:
     """
-    Обратный разбор cookies.txt → список для Playwright.
+    Обратный разбор cookies.txt → список словарей.
 
-    Нужен, чтобы продлевать ЧУЖУЮ сессию, не имея её профиля: загружаем cookies
-    в чистый контекст, заходим на YouTube, Google прокручивает токены — и мы
-    пишем их обратно. Идентичность сессии сохраняется, а значит и станция микса.
+    Нужен, чтобы собрать заголовок Cookie для проверки сессии (auth/refresh.py).
+    Отдельная функция, а не http.cookiejar.MozillaCookieJar из stdlib, по
+    конкретной причине: тот считает строки с префиксом `#HttpOnly_` комментарием
+    и молча выбрасывает — то есть ровно SID и __Secure-*, по которым Google и
+    узнаёт вход. Проверка тогда всегда отвечала бы «сессия мертва».
     """
     try:
         txt = path.read_text(encoding="utf-8", errors="replace")
@@ -96,7 +101,7 @@ def netscape_to_cookies(path: Path) -> List[dict]:
         try:
             exp = int(expiry)
             if exp > 0:
-                c["expires"] = exp     # 0/отсутствие = сессионная, Playwright сам поймёт
+                c["expires"] = exp     # 0/отсутствие = сессионная
         except ValueError:
             pass
         out.append(c)
@@ -126,7 +131,13 @@ def find_exported_cookies() -> Optional[Path]:
 
 
 def validate_netscape(path: Path) -> Tuple[bool, str]:
-    """Годится ли файл в качестве cookies.txt. Ошибку называем словами."""
+    """
+    Годится ли файл в качестве cookies.txt. Ошибку называем словами.
+
+    Считаем строки тем же парсером, каким потом читаем файл, — иначе «файл
+    принят» и «файл читается» могут расходиться. Раньше здесь был свой фильтр
+    строк, и он терял httpOnly-cookies (см. netscape_has_auth).
+    """
     try:
         txt = path.read_text(encoding="utf-8", errors="replace")
     except OSError as ex:
@@ -135,8 +146,7 @@ def validate_netscape(path: Path) -> Tuple[bool, str]:
         return False, "файл пустой"
     if txt.lstrip().startswith(("{", "[")):
         return False, "это JSON, а нужен формат Netscape (в расширении выбери «Netscape»)"
-    rows = [ln for ln in txt.splitlines()
-            if ln.strip() and not ln.startswith("#") and ln.count("\t") >= 5]
+    rows = netscape_to_cookies(path)
     if not rows:
         return False, "не вижу ни одной строки cookie — формат не Netscape"
     if not netscape_has_auth(path):
@@ -164,7 +174,7 @@ def import_cookies(src: Path, dest: Path) -> Tuple[bool, str]:
 
 
 def cookies_to_netscape(cookies: Iterable[dict]) -> str:
-    """Превращает список cookies Playwright в текст Netscape-файла."""
+    """Превращает список cookie-словарей браузера в текст Netscape-файла."""
     lines = [NETSCAPE_HEADER]
     for c in cookies:
         domain = c.get("domain", "")
@@ -185,19 +195,3 @@ def cookies_to_netscape(cookies: Iterable[dict]) -> str:
             "\t".join([domain, include_sub, path, secure, expiry, name, value])
         )
     return "\n".join(lines) + "\n"
-
-
-def write_cookies_file(cookies: Iterable[dict], path: Path) -> int:
-    """
-    Пишет cookies.txt атомарно. Возвращает число записанных cookies.
-
-    Через временный файл + os.replace: качалка может читать cookies.txt в любой
-    момент, и обычная запись «обрезать и налить» дала бы ей наполовину готовый
-    файл — yt-dlp на это отвечает «does not look like a Netscape format».
-    """
-    cookies = list(cookies)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(cookies_to_netscape(cookies), encoding="utf-8")
-    os.replace(tmp, path)      # атомарная подмена в пределах одной ФС
-    return len(cookies)

@@ -5,11 +5,9 @@ cookies.txt
 cookies*.txt
 *-cookies.txt
 *cookies*.txt
-.cookies-external
+.cookies-state
 state.json
-browser-profile/
 *.cookies
-auth/profile/
 *.session
 
 # Загрузки

@@ -6,14 +6,11 @@
 # код приехал через git pull, а окружение осталось от прошлой установки — такое
 # расхождение иначе вылезает невнятной ошибкой в середине работы.
 #
-#   --quick   не заходить в Debian (проверка браузер-слоя занимает ~15с)
+#   --quick   не ходить в сеть (не проверять, жива ли сессия YouTube)
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 DIR="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-DISTRO="${TY_PROOT_DISTRO:-debian}"
-MOUNT="/root/$(basename "$DIR")"
 QUICK=0
 [ "${1:-}" = "--quick" ] && QUICK=1
 
@@ -47,7 +44,6 @@ if command -v deno >/dev/null 2>&1 || command -v node >/dev/null 2>&1; then
 else
     bad "JS-рантайм — без него «Only images are available»" "pkg install deno"
 fi
-need_cmd proot-distro "proot-distro (контейнер под браузер)" "pkg install proot-distro"
 
 head_ "Python-модули"
 need_py yt_dlp  "yt-dlp"  "pip install -U yt-dlp"
@@ -59,19 +55,10 @@ if python -c "import yt_dlp" >/dev/null 2>&1; then
         "$D" "${V:-?}" "$N"
 fi
 
-head_ "Вход в Google (нужен только для приватных плейлистов)"
-need_cmd termux-x11 "termux-x11 (экран для окна входа)" \
-    "pkg install x11-repo && pkg install termux-x11-nightly"
-if command -v am >/dev/null 2>&1 || command -v termux-am >/dev/null 2>&1; then
-    ok "am (сам открывает приложение Termux:X11)"
-else
-    bad "am — Termux:X11 придётся открывать руками" "pkg install termux-am"
-fi
-
 head_ "Приложения (APK)"
+# Termux:X11 больше не нужен: своего браузера у проекта нет.
 if command -v pm >/dev/null 2>&1; then
-    for p in com.termux.x11:"Termux:X11" com.termux.api:"Termux:API" \
-             com.termux.widget:"Termux:Widget"; do
+    for p in com.termux.api:"Termux:API" com.termux.widget:"Termux:Widget"; do
         pkgid="${p%%:*}"; name="${p##*:}"
         if pm list packages 2>/dev/null | grep -q "$pkgid"; then
             ok "$name"
@@ -90,32 +77,22 @@ else
     bad "нет доступа к памяти — музыку некуда класть" "termux-setup-storage"
 fi
 
-head_ "Браузер-слой ($DISTRO)"
-if proot-distro list -q 2>/dev/null | grep -qx -- "$DISTRO" \
-   || [ -d "$PREFIX/var/lib/proot-distro/containers/$DISTRO" ] \
-   || [ -d "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO" ]; then
-    ok "$DISTRO установлен"
+head_ "Аккаунт (нужен для приватного и для миксов)"
+# Важно не «файл есть», а узнаёт ли нас YouTube: анонимный микс — случайная
+# выдача, которая не совпадёт с приложением YouTube. Файл при этом может быть
+# свежим и уже мёртвым, поэтому спрашиваем сам YouTube, а не смотрим на дату.
+if [ -s "$DIR/cookies.txt" ]; then
     if [ "$QUICK" = "1" ]; then
-        warn "содержимое не проверял (--quick)"
+        warn "cookies есть, живьём не проверял (--quick): python main.py check"
+    elif python -m auth.refresh >/dev/null 2>&1; then
+        ok "сессия жива — качаем под аккаунтом"
     else
-        echo "     (захожу внутрь, ~15с…)"
-        INNER='c=0
-command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1 || { echo "NO_CHROMIUM"; c=1; }
-python3 -c "import playwright" >/dev/null 2>&1 || { echo "NO_PLAYWRIGHT"; c=1; }
-exit $c'
-        OUT="$(proot-distro login "$DISTRO" --bind "$DIR:$MOUNT" -- bash -c "$INNER" 2>&1)"
-        case "$OUT" in
-            *NO_CHROMIUM*)  bad "нет Chromium внутри $DISTRO" "bash scripts/setup-termux.sh" ;;
-            *)              ok "Chromium на месте" ;;
-        esac
-        case "$OUT" in
-            *NO_PLAYWRIGHT*) bad "нет Playwright внутри $DISTRO" "bash scripts/setup-termux.sh" ;;
-            *)               ok "Playwright на месте" ;;
-        esac
+        bad "YouTube не узнаёт cookies — миксы будут случайными" \
+            "открой YouTube в Kiwi и тапни иконку расширения"
     fi
 else
-    bad "$DISTRO не установлен — приватные плейлисты недоступны" \
-        "bash scripts/setup-termux.sh"
+    warn "cookies нет — публичное качается, приватное и миксы нет:"
+    printf '     %spython main.py kiwi  → поставить расширение в Kiwi → тапнуть иконку%s\n' "$D" "$N"
 fi
 
 head_ "Состояние"
@@ -124,21 +101,6 @@ if [ -z "$STAMP_MSG" ]; then
     ok "окружение соответствует версии кода"
 else
     bad "$STAMP_MSG" "bash scripts/setup-termux.sh"
-fi
-# важно не «файл есть», а есть ли в нём маркеры входа: анонимный микс —
-# случайная выдача, которая не совпадёт с приложением YouTube
-if [ -s "$DIR/cookies.txt" ]; then
-    if python -c "
-import sys, config
-from auth.cookies_export import netscape_has_auth
-sys.exit(0 if netscape_has_auth(config.COOKIES_FILE) else 1)" 2>/dev/null; then
-        ok "вход подтверждён — качаем под аккаунтом"
-    else
-        bad "cookies.txt без маркеров входа — качаться будет анонимно" \
-            "bash scripts/login.sh --force"
-    fi
-else
-    warn "входа нет — публичное качается, приватное нет: bash scripts/login.sh"
 fi
 
 echo ""

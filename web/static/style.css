@@ -463,10 +463,10 @@ input[type=range]::-moz-range-thumb {
           font: 500 13px var(--mono); }
 .ck-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--tx-3);
           margin-right: 10px; flex-shrink: 0; }
-.ck-dot.fresh, .ck-dot.refreshed { background: var(--green); box-shadow: 0 0 6px rgba(50,215,75,.5); }
+/* коды приходят из auth/refresh.py и совпадают с классами один в один */
+.ck-dot.fresh { background: var(--green); box-shadow: 0 0 6px rgba(50,215,75,.5); }
 .ck-dot.stale { background: var(--yellow); }
-.ck-dot.none, .ck-dot.no_cookies, .ck-dot.need_login,
-.ck-dot.refresh_failed, .ck-dot.expired { background: var(--red); }
+.ck-dot.none, .ck-dot.dead { background: var(--red); }
 .sheet-note { font-size: 13.5px; color: var(--tx-2); line-height: 1.55; }
 .sheet-note b { color: var(--tx); }
 .sheet-note.dim { font-size: 12px; opacity: .75; margin: 10px 0 14px; }

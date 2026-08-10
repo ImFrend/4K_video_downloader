@@ -2,26 +2,18 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # УСТАНОВКА — ОДНОЙ КОМАНДОЙ.     bash scripts/setup-termux.sh
 #
-# По умолчанию ставит только НУЖНОЕ: качалку, TUI и Web-UI. Это ~300 МБ и пара
-# минут. Приватные плейлисты при этом работают — cookies приезжают из твоего
-# браузера (расширение для Kiwi, python main.py kiwi).
+# Ставит ровно одно окружение: нативный Termux (качалка, TUI, Web-UI). ~300 МБ,
+# пара минут. Приватные плейлисты и My Mix при этом работают — cookies приезжают
+# из браузера телефона (расширение для Kiwi, python main.py kiwi).
 #
-# Тяжёлый браузер-слой (proot + Debian + ARM-Chromium + Playwright, ~2 ГБ и
-# десятки минут) нужен ТОЛЬКО если хочешь входить в Google через окно на
-# Termux:X11, не пользуясь браузером телефона:
-#
-#   bash scripts/setup-termux.sh --with-browser
+# Слоя на proot + Debian + ARM-Chromium + Playwright больше нет. Он весил ~2 ГБ
+# и существовал ради своей сессии в браузере — а именно она и портила миксы:
+# состав RD-станции определяется идентичностью сессии в cookies, и с cookies
+# твоего браузера yt-dlp повторяет его список 25 из 25 против 2 из 25 со своим.
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
 DIR="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-DISTRO="${TY_PROOT_DISTRO:-debian}"
-MOUNT="/root/$(basename "$DIR")"
-WITH_BROWSER=0
-case "${1:-}" in
-    --with-browser) WITH_BROWSER=1 ;;
-    --no-browser)   WITH_BROWSER=0 ;;   # прежнее имя флага, оставлено для совместимости
-esac
 
 echo ">> [1/5] Обновление пакетов Termux"
 pkg update -y && pkg upgrade -y
@@ -41,39 +33,36 @@ pkg install -y python-pip || true
 pip install --upgrade yt-dlp textual rich
 
 # JS-движок: YouTube шифрует ссылки через JS (n-challenge). Без рантайма
-# yt-dlp выдаёт "Only images are available". deno — рекомендованный для EJS.
+# yt-dlp выдаёт "Only images are available". deno — рекомендованный для EJS,
+# nodejs — рабочая замена там, где deno не встаёт.
 echo ">> [4b/5] JS-движок для обхода n-challenge YouTube"
 pkg install -y deno || pkg install -y nodejs || \
     echo "   !! поставь вручную: pkg install deno (или nodejs)"
 
-echo ">> [5/5] Ярлыки на домашний экран (Termux:Widget)"
+echo ">> [5/5] Ярлык на домашний экран (Termux:Widget)"
 chmod +x "$DIR"/scripts/*.sh 2>/dev/null || true
 mkdir -p ~/.shortcuts && chmod 700 ~/.shortcuts
 ln -sf "$DIR/scripts/start-web.sh" ~/.shortcuts/TermuxYoutube
-ln -sf "$DIR/scripts/login.sh"     ~/.shortcuts/TermuxYoutube-login
-echo "   ~/.shortcuts/TermuxYoutube        — запуск Web-UI"
-echo "   ~/.shortcuts/TermuxYoutube-login  — вход в Google"
+# ярлык входа остался от браузер-слоя и теперь ведёт в никуда — убираем
+rm -f ~/.shortcuts/TermuxYoutube-login
+echo "   ~/.shortcuts/TermuxYoutube — запуск Web-UI"
 
-stamp() {
-    # Отметка «зависимости версии N установлены». По ней код после git pull
-    # понимает, что окружение осталось от прошлой версии, и говорит об этом
-    # прямо, а не падает где-то в середине работы.
-    V="$(cd "$DIR" && python -c 'import config; print(config.SETUP_VERSION)' 2>/dev/null)"
-    if [ -n "${V:-}" ] && command -v ffmpeg >/dev/null 2>&1 \
-       && python -c "import yt_dlp" >/dev/null 2>&1; then
-        printf '%s\n' "$V" > "$DIR/.setup-stamp"
-    else
-        echo "   !! базовые зависимости не встали — отметку не ставлю."
-        echo "      Проверь причину:  bash scripts/doctor.sh"
-    fi
-}
+# Отметка «зависимости версии N установлены». По ней код после git pull понимает,
+# что окружение осталось от прошлой версии, и говорит об этом прямо, а не падает
+# где-то в середине работы.
+V="$(cd "$DIR" && python -c 'import config; print(config.SETUP_VERSION)' 2>/dev/null)"
+if [ -n "${V:-}" ] && command -v ffmpeg >/dev/null 2>&1 \
+   && python -c "import yt_dlp" >/dev/null 2>&1; then
+    printf '%s\n' "$V" > "$DIR/.setup-stamp"
+else
+    echo "   !! базовые зависимости не встали — отметку не ставлю."
+    echo "      Проверь причину:  bash scripts/doctor.sh"
+fi
 
-if [ "$WITH_BROWSER" = "0" ]; then
-    stamp
-    cat <<'EOF'
+cat <<'EOF'
 
 ============================================================
- Готово. Заняло минуты, а не десятки минут.
+ Готово.
 
  Запуск:
      python main.py web        Web-UI в браузере телефона
@@ -87,63 +76,7 @@ if [ "$WITH_BROWSER" = "0" ]; then
     в браузере: состав микса определяется сессией cookies.)
 
  Вместо расширения можно файлом:  python main.py cookies
-
- Вход через окно на Termux:X11 (тяжело, ~2 ГБ, обычно не нужен):
-     bash scripts/setup-termux.sh --with-browser
-
- Проверка зависимостей:  bash scripts/doctor.sh
+ Жива ли сессия:                  python main.py check
+ Проверка зависимостей:           bash scripts/doctor.sh
 ============================================================
 EOF
-    exit 0
-fi
-
-echo ">> [5/7] Экран для входа (termux-x11 + am)"
-# Ставим ЗАРАНЕЕ: раньше это доустанавливалось на лету посреди входа — человек
-# ждал загрузки пакетов там, где ожидал увидеть форму Google.
-pkg install -y x11-repo >/dev/null 2>&1
-pkg install -y termux-x11-nightly || echo "   (termux-x11 не встал — проверь APK «Termux:X11»)"
-pkg install -y termux-am || echo "   (termux-am не встал — Termux:X11 придётся открывать руками)"
-
-echo ">> [6/7] proot-distro + $DISTRO (для браузер-слоя авторизации)"
-pkg install -y proot-distro
-# путь к rootfs зависит от версии proot-distro (5.x: containers/, ≤4.x:
-# installed-rootfs/) — не гадаем, спрашиваем его самого. -q = только имена.
-if proot-distro list -q 2>/dev/null | grep -qx -- "$DISTRO"; then
-    echo "   ($DISTRO уже установлен)"
-else
-    proot-distro install "$DISTRO" || echo "   ($DISTRO уже установлен либо не встал — проверю на следующем шаге)"
-fi
-
-echo ">> [7/7] Браузер-слой внутри $DISTRO (Playwright + ARM-Chromium)"
-echo "   Это долгий шаг (apt + chromium). Заходить в proot руками не надо."
-BROWSER_OK=1
-proot-distro login "$DISTRO" --bind "$DIR:$MOUNT" -- \
-    bash -c "cd '$MOUNT' && bash scripts/setup-debian.sh" || BROWSER_OK=0
-
-stamp
-
-cat <<EOF
-
-============================================================
- Установка завершена.
-
- Скачивание (публичное уже работает):
-     python main.py web        Web-UI в браузере телефона
-     python main.py            TUI в терминале
-     тап по виджету «TermuxYoutube» — то же самое, без команд
-
- Приватные плейлисты и My Mix — один вход, одной командой:
-     bash scripts/login.sh
-   (сам поднимет X11, откроет Termux:X11, покажет форму Google
-    и закроется, когда войдёшь. Дальше cookies обновляются сами.)
-
- Что-то не так — покажет, что именно, и чем чинить:
-     bash scripts/doctor.sh
-EOF
-[ "$BROWSER_OK" = "1" ] || cat <<'EOF'
-
- !! Браузер-слой поставить не удалось (сеть/место?). Повтори позже:
-    bash scripts/setup-termux.sh
-    Публичные плейлисты работают и без него.
-EOF
-echo "============================================================"
