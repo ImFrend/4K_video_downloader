@@ -19,7 +19,13 @@
 
 <div align="center">
 
-[🎬 Посмотреть демонстрацию работы (видео)](https://github.com/user-attachments/assets/85a1d186-fae6-4d8c-945a-29e8ef7253e2)
+## 🎬 Демонстрация работы TermuxYoutube
+
+<video src="https://imfrend.github.io/4K_video_downloader/manual2.mp4" controls="controls" width="100%" style="max-width: 800px;">
+  Ваш браузер не поддерживает встроенное видео. <a href="https://imfrend.github.io/4K_video_downloader/manual2.mp4">Скачать видео</a>.
+</video>
+
+*Полный 2-минутный процесс: от загрузки трека до экспорта обрезанного аудиофайла.*
 
 </div>
 
