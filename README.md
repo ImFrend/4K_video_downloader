@@ -21,8 +21,8 @@
 
 ## 🎬 Демонстрация работы TermuxYoutube
 
-<video src="https://imfrend.github.io/4K_video_downloader/manual2.mp4" controls="controls" width="100%" style="max-width: 800px;">
-  Ваш браузер не поддерживает встроенное видео. <a href="https://imfrend.github.io/4K_video_downloader/manual2.mp4">Скачать видео</a>.
+<video src="https://github.com/user-attachments/assets/b1f35788-8bf9-4f97-8f4f-30bacb92d7ef" controls="controls" width="100%">
+  Видео не проигрывается? <a href="https://imfrend.github.io/4K_video_downloader/manual2.mp4">Скачать напрямую</a>.
 </video>
 
 *Полный 2-минутный процесс: от загрузки трека до экспорта обрезанного аудиофайла.*
