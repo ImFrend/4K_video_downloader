@@ -97,8 +97,10 @@ class DownloadManager:
             # разрешить yt-dlp скачать EJS-решатель JS-challenge (n-sig)
             opts["remote_components"] = list(config.REMOTE_COMPONENTS)
         if config.JS_RUNTIMES:
-            # без этого включён только deno, и поставленный nodejs не берётся
-            opts["js_runtimes"] = list(config.JS_RUNTIMES)
+            # без этого включён только deno, и поставленный nodejs не берётся.
+            # Python-API ждёт dict {runtime: {config}}, а не список (в отличие
+            # от CLI, где строку в dict разбирает сам yt-dlp).
+            opts["js_runtimes"] = {name: {} for name in config.JS_RUNTIMES}
         return opts
 
     @contextlib.contextmanager
