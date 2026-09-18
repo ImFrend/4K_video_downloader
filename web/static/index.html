@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#121317">
   <meta name="description" content="Аудио из плейлистов YouTube — целиком на телефоне">
   <meta name="format-detection" content="telephone=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,162 +11,142 @@
   <title>TermuxYoutube</title>
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
-  <link rel="apple-touch-icon" href="/static/icon.svg">
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<body data-tab="home">
 
-  <!-- ─────────── ГЛАВНАЯ ─────────── -->
-  <section class="view view-home" id="view-home">
-    <header class="topbar">
-      <!-- нейм-плейт: LED показывает НАСТОЯЩЕЕ состояние связи с сервером (SSE) -->
-      <h1 class="brand"><span class="brand-led" id="liveDot"></span>TermuxYoutube</h1>
-      <!-- вход в Библиотеку скачанного (список плейлистов на диске) -->
-      <button class="gear" id="libBtn" aria-label="Скачанные">
-        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14"/></svg>
-      </button>
-      <!-- SVG вместо эмодзи ⚙: эмодзи рендерится на каждом телефоне по-своему -->
-      <button class="gear" id="gearBtn" aria-label="Настройки">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+<div class="app">
+
+  <!-- ══════════ ГЛАВНАЯ / БИБЛИОТЕКА ══════════ -->
+  <section class="screen" id="s-home">
+    <header class="ytop">
+      <div class="ytop-id">
+        <span class="ava" id="homeAva">TY</span>
+        <span class="ytop-name">Библиотека</span>
+      </div>
+      <span class="live-led" id="liveDot" title="связь"></span>
+      <button class="ytop-ic" id="gearBtn" aria-label="Настройки">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 15c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm11-3c0-.62-.06-1.22-.16-1.81l-2.12-.89c-.19-.77-.49-1.5-.89-2.15l.98-2.08c-.68-.82-1.48-1.52-2.38-2.08l-2.02 1.09c-.66-.39-1.39-.68-2.15-.87l-.88-2.13C13.22 2.06 12.62 2 12 2s-1.22.06-1.81.16l-.89 2.12c-.77.19-1.5.49-2.15.89L5.07 4.19c-.82.68-1.52 1.48-2.08 2.38l1.09 2.02c-.39.66-.68 1.39-.87 2.15l-2.13.88C1.06 12.22 1 12.82 1 13.4s.06 1.22.16 1.81l2.12.89c.19.77.49 1.5.89 2.15l-.98 2.08c.68.82 1.48 1.52 2.38 2.08l2.02-1.09c.66.39 1.39.68 2.15.87l.88 2.13c.59.1 1.19.16 1.81.16s1.22-.06 1.81-.16l.89-2.12c.77-.19 1.5-.49 2.15-.89l2.08.98c.82-.68 1.52-1.48 2.08-2.38l-1.09-2.02c.39-.66.68-1.39.87-2.15l2.13-.88z"/></svg>
       </button>
     </header>
 
-    <main class="scroll">
-      <!-- вставить плейлист -->
+    <div class="yscroll">
+      <div class="chips" id="libChips">
+        <button class="chip on" data-f="recent">Недавние <span class="caret">▾</span></button>
+        <button class="chip" data-f="playlists">Плейлисты</button>
+        <button class="chip" data-f="music">Музыка</button>
+      </div>
+
+      <!-- История: недавно скачанное, горизонтально -->
+      <div class="sec" id="histSec">
+        <div class="sec-h">История</div>
+        <div class="hstrip" id="histStrip"></div>
+      </div>
+
+      <!-- список плейлистов -->
+      <ul class="pl-list" id="plList"></ul>
+      <!-- плоский список всех треков (чип «Музыка») -->
+      <ul class="tr-list flat" id="trFlat" hidden></ul>
+      <p class="empty2" id="libEmpty" hidden>Пока ничего не скачано</p>
+    </div>
+  </section>
+
+  <!-- ══════════ ОЧЕРЕДЬ ══════════ -->
+  <section class="screen" id="s-queue" hidden>
+    <header class="ytop"><span class="ytop-name big">Очередь</span></header>
+    <div class="yscroll">
       <button class="paste" id="pasteBtn">
-        <span class="paste-ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
-        <span class="paste-tx">Вставить из буфера</span>
+        <span class="paste-ic"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></span>
+        Вставить ссылку из буфера
       </button>
       <p class="hint" id="pasteHint"></p>
-
-      <!-- глубина снимка микса: RD-радио бесконечно, берём первые N -->
-      <div class="limitrow" id="limitRow">
-        <span class="limit-lbl">Треков из микса</span>
-        <div class="chips" id="limitChips">
-          <button data-n="25" class="chip on">25</button>
-          <button data-n="50" class="chip">50</button>
-          <button data-n="100" class="chip">100</button>
-        </div>
+      <div class="chips" id="limitChips">
+        <span class="chips-lbl">Треков из микса</span>
+        <button class="chip small on" data-n="25">25</button>
+        <button class="chip small" data-n="50">50</button>
+        <button class="chip small" data-n="100">100</button>
       </div>
-
-      <!-- ① платформа (гибрид: вид «приложения» + формат) -->
-      <div class="block">
-        <div class="block-h">Платформа <span class="soon">приложение — скоро</span></div>
-        <div class="seg seg-p" id="segPlatform">
-          <button data-v="ios" class="p-ios"><i class="pd"></i>iOS</button>
-          <button data-v="windows" class="p-win"><i class="pd"></i>Win</button>
-          <button data-v="android" class="on p-and"><i class="pd"></i>Android</button>
-          <button data-v="linux" class="p-lin"><i class="pd"></i>Linux</button>
-        </div>
-        <p class="sub" id="platformSub">формат: без ограничений (Best)</p>
-      </div>
-
-      <!-- ② качество (реальные потоки YouTube, цвет по качеству) -->
-      <div class="block">
-        <div class="block-h">Качество</div>
-        <div class="seg seg-q" id="segQuality">
-          <button data-v="max" class="on q-max"><i class="qd"></i>Максимум</button>
-          <button data-v="standard" class="q-std"><i class="qd"></i>Стандарт</button>
-          <button data-v="economy" class="q-eco"><i class="qd"></i>Эконом</button>
-        </div>
-        <p class="sub" id="qualitySub">Opus ~160 kbps — максимум, что отдаёт YouTube</p>
-      </div>
-
-      <!-- ③ параллелизм -->
-      <div class="block">
-        <div class="block-h">Параллелизм <span class="risk-dot" id="riskTag"></span></div>
-        <input type="range" id="streams" min="2" max="8" step="2" value="6">
-        <div class="slider-meta">
-          <span id="streamsLabel">3 плейлиста × 2 трека = 6 потоков</span>
-        </div>
-        <p class="sub" id="riskSub">чуть выше среднего — управляемый</p>
-      </div>
-
-      <!-- ④ очередь -->
-      <div class="block-h queue-h">Очередь <span id="queueCount" class="count"></span></div>
       <ul class="queue" id="queue"></ul>
-    </main>
-
-    <div class="footbar">
-      <button class="go" id="goBtn" disabled>▸ Скачать всё</button>
+      <p class="empty2" id="qEmpty">Очередь пуста<br><span>Вставь ссылку на плейлист, My Mix или список видео</span></p>
     </div>
+    <div class="foot"><button class="go" id="goBtn" disabled>Скачать всё</button></div>
   </section>
 
-  <!-- ─────────── ДЕТАЛИ ПЛЕЙЛИСТА ─────────── -->
-  <section class="view view-detail" id="view-detail" hidden>
-    <header class="topbar">
-      <button class="back" id="backBtn">‹ Назад</button>
-      <h1 id="detailTitle">My Mix</h1>
-      <span class="spacer"></span>
-    </header>
-    <div class="detail-hero">
-      <div class="cover" id="detailCover"></div>
-      <div class="detail-stat" id="detailStat"></div>
-    </div>
-    <main class="scroll">
-      <ul class="tracks" id="tracklist"></ul>
-    </main>
-  </section>
+  <!-- ══════════ НАСТРОЙКИ ══════════ -->
+  <section class="screen" id="s-settings" hidden>
+    <header class="ytop"><span class="ytop-name big">Настройки</span></header>
+    <div class="yscroll">
+      <p class="set-note warn" id="setupNote" hidden></p>
 
-  <!-- ─────────── БИБЛИОТЕКА (скачанное) ─────────── -->
-  <section class="view view-library" id="view-library">
-    <header class="topbar">
-      <button class="back" id="libBack">‹ Назад</button>
-      <h1>Скачанные</h1>
-      <span class="spacer"></span>
-    </header>
-    <main class="scroll">
-      <ul class="lib" id="libList"></ul>
-      <p class="lib-empty" id="libEmpty" hidden>Пока ничего не скачано</p>
-    </main>
-  </section>
-
-  <!-- ─────────── ДЕТАЛИ СКАЧАННОГО ПЛЕЙЛИСТА ─────────── -->
-  <section class="view view-libdetail" id="view-libdetail">
-    <header class="topbar">
-      <button class="back" id="libDetailBack">‹ Назад</button>
-      <h1 id="libDetailTitle">Плейлист</h1>
-      <span class="spacer"></span>
-    </header>
-    <div class="detail-hero">
-      <div class="cover" id="libDetailCover"></div>
-      <div class="detail-stat" id="libDetailStat"></div>
-    </div>
-    <main class="scroll">
-      <ul class="tracks lib-tracks" id="libTrackList"></ul>
-    </main>
-  </section>
-
-  <!-- ─────────── ЛИСТ НАСТРОЕК (вход) ─────────── -->
-  <div class="sheet-wrap" id="sheet" hidden>
-    <div class="sheet-bg" id="sheetBg"></div>
-    <div class="sheet">
-      <div class="sheet-grip"></div>
-      <p class="sheet-note warn" id="setupNote" hidden></p>
-      <h2>Аккаунт</h2>
-      <div class="ck-row">
-        <span class="ck-dot" id="ckDot"></span>
-        <span id="ckMsg">—</span>
-      </div>
-      <!-- под аккаунтом или анонимно: от этого зависит, совпадёт ли микс
-           с тем, что показывает приложение YouTube -->
-      <div class="ck-row">
-        <span class="ck-dot" id="authDot"></span>
-        <span id="authMsg">—</span>
-      </div>
-      <p class="sheet-note">
-        Вход живёт в <b>браузере телефона</b>, а не здесь. Открой YouTube в Kiwi
-        и тапни иконку расширения — cookies приедут сюда сами. Заодно миксы
-        будут ровно те, что видно в этом браузере: состав микса определяется
-        сессией.
-      </p>
-      <button class="sheet-go" id="checkBtn">Проверить сессию</button>
+      <div class="set-sec">Аккаунт</div>
+      <div class="ck-row"><span class="ck-dot" id="ckDot"></span><span id="ckMsg">—</span></div>
+      <div class="ck-row"><span class="ck-dot" id="authDot"></span><span id="authMsg">—</span></div>
+      <p class="set-note">Вход живёт в <b>браузере телефона</b>. Открой YouTube в Kiwi и тапни иконку расширения — cookies приедут сами, и миксы будут ровно те, что видно в браузере.</p>
+      <button class="set-btn" id="checkBtn">Проверить сессию</button>
       <pre class="log" id="loginLog" hidden></pre>
-      <p class="sheet-note dim" id="authHint"></p>
-      <button class="sheet-close" id="sheetClose">Понятно</button>
-    </div>
-  </div>
+      <p class="set-note dim" id="authHint"></p>
 
-  <script src="/static/app.js"></script>
+      <div class="set-sec">Платформа</div>
+      <div class="seg seg-p" id="segPlatform">
+        <button data-v="ios" class="p-ios"><i class="pd"></i>iOS</button>
+        <button data-v="windows" class="p-win"><i class="pd"></i>Win</button>
+        <button data-v="android" class="on p-and"><i class="pd"></i>Android</button>
+        <button data-v="linux" class="p-lin"><i class="pd"></i>Linux</button>
+      </div>
+      <p class="set-note dim" id="platformSub">формат: без ограничений (Best)</p>
+
+      <div class="set-sec">Качество</div>
+      <div class="seg seg-q" id="segQuality">
+        <button data-v="max" class="on q-max"><i class="qd"></i>Максимум</button>
+        <button data-v="standard" class="q-std"><i class="qd"></i>Стандарт</button>
+        <button data-v="economy" class="q-eco"><i class="qd"></i>Эконом</button>
+      </div>
+      <p class="set-note dim" id="qualitySub">Opus ~160 kbps — максимум, что отдаёт YouTube</p>
+
+      <div class="set-sec">Параллелизм <span class="risk-dot" id="riskTag"></span></div>
+      <input type="range" id="streams" min="2" max="8" step="2" value="6">
+      <div class="slider-meta"><span id="streamsLabel">3 плейлиста × 2 трека = 6 потоков</span></div>
+      <p class="set-note dim" id="riskSub">чуть выше среднего — управляемый</p>
+    </div>
+  </section>
+
+  <!-- ══════════ ПЛЕЙЛИСТ (overlay) ══════════ -->
+  <section class="screen overlay" id="s-detail" hidden>
+    <header class="ytop">
+      <button class="back-ic" id="detBack" aria-label="Назад"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></button>
+      <span class="ytop-name" id="detTop">Плейлист</span>
+    </header>
+    <div class="yscroll">
+      <div class="pl-hero">
+        <h2 class="pl-h-title" id="detTitle">Плейлист</h2>
+        <p class="pl-h-cap">Скачанный плейлист</p>
+        <p class="pl-h-stat" id="detStat"></p>
+      </div>
+      <ul class="tr-list" id="detTracks"></ul>
+    </div>
+  </section>
+
+  <!-- ══════════ НИЖНИЙ БАР ══════════ -->
+  <nav class="tabbar">
+    <button class="tab on" data-tab="home">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M4 21V10.08l8-7 8 7V21h-6v-6h-4v6H4z"/></svg>
+      <span>Главная</span>
+    </button>
+    <button class="tab" data-tab="queue">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M20 8H4V6h16v2zm-2-4H6v2h12V4zm4 8v10H2V12h20zm-2 2H4v6h16v-6zM10 15l5 3-5 3v-6z"/></svg>
+      <span>Очередь</span>
+    </button>
+    <button class="tab tab-add" id="addBtn" aria-label="Добавить">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+    </button>
+    <button class="tab" data-tab="settings">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 15c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm11-3c0-.62-.06-1.22-.16-1.81l-2.12-.89c-.19-.77-.49-1.5-.89-2.15l.98-2.08c-.68-.82-1.48-1.52-2.38-2.08l-2.02 1.09c-.66-.39-1.39-.68-2.15-.87l-.88-2.13C13.22 2.06 12.62 2 12 2s-1.22.06-1.81.16l-.89 2.12c-.77.19-1.5.49-2.15.89L5.07 4.19c-.82.68-1.52 1.48-2.08 2.38l1.09 2.02c-.39.66-.68 1.39-.87 2.15l-2.13.88C1.06 12.22 1 12.82 1 13.4s.06 1.22.16 1.81l2.12.89c.19.77.49 1.5.89 2.15l-.98 2.08c.68.82 1.48 1.52 2.38 2.08l2.02-1.09c.66.39 1.39.68 2.15.87l.88 2.13c.59.1 1.19.16 1.81.16s1.22-.06 1.81-.16l.89-2.12c.77-.19 1.5-.49 2.15-.89l2.08.98c.82-.68 1.52-1.48 2.08-2.38l-1.09-2.02c.39-.66.68-1.39.87-2.15l2.13-.88z"/></svg>
+      <span>Настройки</span>
+    </button>
+  </nav>
+
+</div>
+
+<script src="/static/app.js"></script>
 </body>
 </html>
