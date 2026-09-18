@@ -403,8 +403,10 @@ class JobManager:
             # манифест пишем В ЛЮБОМ исходе (complete/partial/cancelled) — источник
             # правды Библиотеки; статус выводится из фактических статусов треков.
             self._write_manifest(job, pl_dir)
-            # человеческая пауза «пересел на новый альбом» перед освобождением слота
-            time.sleep(random.uniform(config.PLAYLIST_PAUSE_MIN, config.PLAYLIST_PAUSE_MAX))
+            # человеческая пауза «пересел на новый альбом» — но НЕ на отмене
+            # (иначе отмена «висит» лишние секунды на ровном месте)
+            if not cancelled:
+                time.sleep(random.uniform(config.PLAYLIST_PAUSE_MIN, config.PLAYLIST_PAUSE_MAX))
             sem.release()
 
     def _write_manifest(self, job: Job, pl_dir) -> None:

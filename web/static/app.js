@@ -64,10 +64,16 @@ let hintT = null;
 function hint(msg, level) { const h = E("pasteHint"); h.textContent = msg; h.className = "hint show" + (level ? " " + level : "");
   clearTimeout(hintT); hintT = setTimeout(() => h.classList.remove("show"), level === "warn" ? 5200 : 2600); }
 
-// лимит-чипы
-E("limitChips").querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => {
-  E("limitChips").querySelectorAll(".chip").forEach((x) => x.classList.remove("on")); c.classList.add("on"); libLimit = +c.dataset.n;
-}));
+// лимит-чипы — выбор запоминается (не сбрасывается на 25)
+try { const v = +localStorage.getItem("ty-limit"); if (v) libLimit = v; } catch (_) {}
+E("limitChips").querySelectorAll(".chip").forEach((c) => {
+  c.classList.toggle("on", +c.dataset.n === libLimit);
+  c.addEventListener("click", () => {
+    E("limitChips").querySelectorAll(".chip").forEach((x) => x.classList.remove("on"));
+    c.classList.add("on"); libLimit = +c.dataset.n;
+    try { localStorage.setItem("ty-limit", libLimit); } catch (_) {}
+  });
+});
 
 // ═════════ БИБЛИОТЕКА ═════════
 E("libChips").addEventListener("click", (e) => {

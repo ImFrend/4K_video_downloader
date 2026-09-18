@@ -287,6 +287,10 @@ class DownloadManager:
                        subdir: Optional[str] = None,
                        album: Optional[str] = None,
                        track_total: Optional[int] = None) -> None:
+        if self._cancelled:                     # уже отменили — не стартуем трек вообще
+            track.status, track.error = "cancelled", "отменено"
+            on_progress(track)
+            return
         dl_url = self._resolve_url(track)
 
         # AAC-first: формат предпочитает m4a (140) → копия без перекодирования.
@@ -436,6 +440,8 @@ class DownloadManager:
             with ThreadPoolExecutor(max_workers=workers) as ex:
                 futures = []
                 for t in pending:
+                    if self._cancelled:          # на отмене новые треки не ставим
+                        break
                     # ramp-up + джиттер: не залп, а «волной» (только если задан, web-слой)
                     if start_jitter > 0 and not self._cancelled:
                         _interruptible_sleep(random.uniform(0.0, start_jitter),
