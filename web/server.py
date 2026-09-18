@@ -29,7 +29,8 @@ from urllib.parse import parse_qs, urlparse
 
 import config
 from core import library
-from core.downloader import DownloadManager, Track
+from core.downloader import (DownloadManager, Track, _cleanup_partials,
+                             _reap_orphans, _safe)
 from auth.cookies_export import (cookies_to_netscape, netscape_has_auth,
                                  validate_netscape)
 from auth.refresh import ensure_fresh_cookies, probe_session
@@ -56,6 +57,15 @@ def _short(ex: Exception) -> str:
     return (s[:140] + "…") if len(s) > 140 else s
 
 
+_CODEC_BY_EXT = {".m4a": "aac", ".mp3": "mp3", ".opus": "opus", ".ogg": "vorbis"}
+
+
+def _codec_of(fname: Optional[str]) -> Optional[str]:
+    if not fname:
+        return None
+    return _CODEC_BY_EXT.get(os.path.splitext(fname)[1].lower())
+
+
 # ──────────────────────────── модель очереди ────────────────────────────
 class Job:
     """Одна карточка плейлиста в очереди."""
@@ -65,9 +75,12 @@ class Job:
         self.url = url
         self.title: Optional[str] = None
         self.thumbnail: Optional[str] = None
-        self.status = "probing"   # probing|ready|queued|downloading|done|error
+        # probing|ready|queued|downloading|cancelling|cleaning|done|cancelled|error
+        self.status = "probing"
         self.error = ""
         self.tracks: list[Track] = []
+        self.dm: Optional[DownloadManager] = None   # свой на джоб → cancel скоупится
+        self.cancel_requested = False
 
 
 class JobManager:
@@ -220,6 +233,25 @@ class JobManager:
             self.jobs = [j for j in self.jobs if j.id != jid]
             self._bump()
 
+    def cancel(self, jid: Optional[int] = None) -> bool:
+        """Кооперативная отмена (jid=None → вся очередь). Ставим флаг на джоб и
+        дёргаем его личный dm.cancel(); воркеры встают на следующем hook-тике, а
+        зачистка .part и запись статуса — в finally _run_one (там гарантированно
+        после остановки воркеров). kill процесса НЕ используем: он не даёт
+        отработать cleanup."""
+        with self.lock:
+            targets = [j for j in self.jobs
+                       if jid in (None, j.id)
+                       and j.status in ("queued", "downloading", "cancelling")]
+            for j in targets:
+                j.cancel_requested = True
+                j.status = "cancelling"       # мгновенная обратная связь в UI
+            self._bump()
+        for j in targets:
+            if j.dm is not None:      # уже качается → тормозим воркеры
+                j.dm.cancel()
+        return bool(targets)
+
     def set_settings(self, data: dict) -> None:
         with self.lock:
             for k in ("platform", "quality", "streams"):
@@ -292,31 +324,80 @@ class JobManager:
             self._bump()
 
     def _run_one(self, job: Job, sem: threading.Semaphore, tracks_per: int) -> None:
+        job.dm = DownloadManager()             # свой на джоб → отмена не заденет соседей
+        if job.cancel_requested:               # отменили ещё в очереди → стартуем отменённым
+            job.dm.cancel()
+        pl_dir = config.OUTPUT_DIR / _safe(job.title or "playlist")
         try:
             with self.lock:
-                job.status = "downloading"
+                if not job.cancel_requested:
+                    job.status = "downloading"
                 self._bump()
 
             def on_prog(_tr: Track) -> None:
                 with self.lock:
                     self._bump()
 
-            self.dm.download_all(
+            job.dm.download_all(
                 job.tracks, on_prog,
                 subdir=job.title, cover_url=job.thumbnail,
                 workers=tracks_per, start_jitter=config.START_JITTER_MAX,
             )
-            with self.lock:
-                job.status = "done"
-                self._bump()
         except Exception as ex:  # noqa: BLE001
             with self.lock:
                 job.status, job.error = "error", _short(ex)
                 self._bump()
         finally:
+            cancelled = job.cancel_requested or (job.dm is not None and job.dm._cancelled)
+            if cancelled:                       # ── подмести .part/.ytdl ──
+                with self.lock:
+                    job.status = "cleaning"
+                    self._bump()
+                _cleanup_partials(pl_dir)
+            with self.lock:
+                if job.status != "error":
+                    job.status = "cancelled" if cancelled else "done"
+                self._bump()
+            # манифест пишем В ЛЮБОМ исходе (complete/partial/cancelled) — источник
+            # правды Библиотеки; статус выводится из фактических статусов треков.
+            self._write_manifest(job, pl_dir)
             # человеческая пауза «пересел на новый альбом» перед освобождением слота
             time.sleep(random.uniform(config.PLAYLIST_PAUSE_MIN, config.PLAYLIST_PAUSE_MAX))
             sem.release()
+
+    def _write_manifest(self, job: Job, pl_dir) -> None:
+        tracks = []
+        for t in job.tracks:
+            done = t.status == "done"
+            fpath = t.filepath if done else ""
+            fname = os.path.basename(fpath) if fpath else None
+            size = 0
+            if fpath:
+                try:
+                    size = os.path.getsize(fpath)
+                except OSError:
+                    size = 0
+            tracks.append({
+                "id": t.id or None,
+                "file": fname,
+                "title": t.title,
+                "index": t.playlist_index,
+                "size": size,
+                "duration": t.duration,
+                "codec": _codec_of(fname),
+                "status": "done" if done else ("error" if t.status == "error" else "cancelled"),
+            })
+        prev = library.load_manifest(pl_dir) or {}
+        man = {
+            "title": job.title or "playlist",
+            "source": job.url,
+            "cover": library._find_cover(pl_dir),
+            "created": prev.get("created") or int(time.time()),
+            "expected": len(job.tracks),   # сколько планировали → база для partial
+            "tracks": tracks,
+        }
+        man["status"] = library.derive_pl_status(tracks, man["expected"])
+        library.save_manifest(pl_dir, man)
 
     # ---- снимок для фронта ----
     def snapshot(self) -> dict:
@@ -552,6 +633,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/remove":
             MANAGER.remove(int(body.get("id", 0)))
             self._json({"ok": True})
+        elif path == "/api/cancel":
+            jid = body.get("id")
+            ok = MANAGER.cancel(int(jid) if jid is not None else None)
+            self._json({"ok": ok})
         elif path == "/api/check":
             ok, msg = MANAGER.start_check()
             self._json({"ok": ok, "msg": msg})
@@ -580,6 +665,9 @@ def serve(open_browser: bool = True) -> int:
     addr = (config.WEB_HOST, config.WEB_PORT)
     httpd = ThreadingHTTPServer(addr, Handler)
     httpd.daemon_threads = True
+    reaped = _reap_orphans(config.OUTPUT_DIR)   # подмести .part/.ytdl от прошлого краха
+    if reaped:
+        print(f"  подметено хвостов прошлой загрузки: {reaped}")
     url = f"http://{config.WEB_HOST}:{config.WEB_PORT}"
     print(f"  TermuxYoutube web -> {url}")
     print("  (Ctrl+C to stop)")

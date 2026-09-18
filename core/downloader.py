@@ -381,7 +381,7 @@ class DownloadManager:
                     _append_done_id(folder, track.id)
             on_progress(track)
         except yt_dlp.utils.DownloadCancelled:
-            track.status, track.error = "error", "отменено"
+            track.status, track.error = "cancelled", "отменено"
             on_progress(track)
         except Exception as ex:  # noqa: BLE001
             track.status, track.error = "error", _short_err(ex)
@@ -531,6 +531,45 @@ def _save_thumbnail(url: Optional[str], dest: Path, max_h: int = 720) -> bool:
 
 
 # ──────────────────────────── утилиты ────────────────────────────
+_PARTIAL_GLOBS = ("*.part", "*.ytdl", "*.part-Frag*", "*.temp", "*.webp")
+
+
+def _cleanup_partials(folder: Path) -> int:
+    """Подмести хвосты прерванной загрузки (.part/.ytdl/фрагменты/сырые обложки)
+    СТРОГО внутри папки плейлиста — никогда рекурсивно по всей Music. Возвращает
+    число удалённых файлов."""
+    n = 0
+    try:
+        for pat in _PARTIAL_GLOBS:
+            for p in folder.glob(pat):
+                try:
+                    p.unlink()
+                    n += 1
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return n
+
+
+def _reap_orphans(root: Path) -> int:
+    """При старте сервера подмести .part/.ytdl, оставшиеся от прошлого жёсткого
+    завершения (Termux убил процесс в фоне). Рекурсивно по OUTPUT_DIR, но только
+    заведомо временные расширения."""
+    n = 0
+    try:
+        for pat in ("*.part", "*.ytdl"):
+            for p in Path(root).rglob(pat):
+                try:
+                    p.unlink()
+                    n += 1
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return n
+
+
 def _archive_path(folder: Path) -> Path:
     return folder / ".downloaded.txt"
 
