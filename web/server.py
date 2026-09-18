@@ -25,8 +25,10 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
+from urllib.parse import parse_qs, urlparse
 
 import config
+from core import library
 from core.downloader import DownloadManager, Track
 from auth.cookies_export import (cookies_to_netscape, netscape_has_auth,
                                  validate_netscape)
@@ -460,6 +462,16 @@ class Handler(BaseHTTPRequestHandler):
             self._json(MANAGER.snapshot())
         elif path == "/api/events":
             self._sse()
+        elif path == "/api/library":
+            self._json({"root": str(config.OUTPUT_DIR),
+                        "playlists": library.scan_library(config.OUTPUT_DIR)})
+        elif path == "/api/library/detail":
+            key = (parse_qs(urlparse(self.path).query).get("pl") or [""])[0]
+            d = library.detail(config.OUTPUT_DIR, key)
+            if d is None:
+                self._send(404, b"not found", "text/plain")
+            else:
+                self._json(d)
         else:
             self._send(404, b"not found", "text/plain")
 
