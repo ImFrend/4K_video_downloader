@@ -568,3 +568,59 @@ input[type=range]::-moz-range-thumb {
     transition-duration: .01ms !important;
   }
 }
+
+/* ═══════════ Библиотека (скачанное) ═══════════ */
+/* те же слайд-вьюхи, что view-detail, поверх по z-index */
+.view-library   { z-index: 3; transform: translateX(100%); }
+.view-libdetail { z-index: 4; transform: translateX(100%); }
+body.library   .view-library   { transform: translateX(0); }
+body.libdetail .view-libdetail { transform: translateX(0); }
+
+/* обложка: картинка поверх глифа ♪ */
+.cover-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+             object-fit: cover; border-radius: inherit; }
+.thumb, .cover, .trk-cov { position: relative; overflow: hidden; }
+
+/* чипы «глубины снимка» под кнопкой вставки */
+.limitrow { display: flex; align-items: center; justify-content: space-between;
+            margin: 2px 2px 16px; }
+.limit-lbl { font: 500 12.5px var(--mono); color: var(--tx-2); }
+.chips { display: flex; }
+.chips > * + * { margin-left: 8px; }
+.chip { font: 600 13px var(--mono); color: var(--tx-2); background: var(--surface);
+        border: .5px solid var(--line); border-radius: var(--r-m); padding: 6px 15px;
+        cursor: pointer; transition: transform .12s var(--spring), color .2s,
+        border-color .2s, background .2s; }
+.chip:active { transform: scale(.9); }
+.chip.on { color: #fff; border-color: var(--accent); background: rgba(62,160,255,.14); }
+
+/* список библиотеки — реюз .card */
+.lib { list-style: none; margin: 0; padding: 0; }
+.lib-empty { text-align: center; color: var(--tx-3); font: 400 14px var(--sans);
+             margin-top: 48px; }
+.lib-empty[hidden] { display: none; }
+
+.badge { font: 600 10.5px var(--mono); padding: 2px 8px; border-radius: 6px; flex-shrink: 0; }
+.badge.partial   { color: var(--yellow); background: rgba(255,214,10,.14); }
+.badge.cancelled { color: var(--red); background: rgba(255,69,58,.14); }
+
+/* трек в деталях: обложка + удаление */
+.lib-tracks .trk-cov { width: 42px; height: 42px; border-radius: 7px; flex-shrink: 0;
+  background: var(--surface-2) center/cover no-repeat; display: grid; place-items: center;
+  font: 500 16px var(--mono); color: var(--tx-3); }
+.trk.notdone { opacity: .5; }
+.trk-del { border: none; background: none; color: var(--tx-3); cursor: pointer;
+  font-size: 16px; width: 32px; height: 32px; flex-shrink: 0; display: grid;
+  place-items: center; border-radius: 8px;
+  transition: transform .12s var(--spring), color .2s, background .2s; }
+.trk-del:active { transform: scale(.82); color: var(--red); background: rgba(255,69,58,.12); }
+
+/* кнопка «Отменить» вместо «Скачать всё» во время загрузки */
+.go.cancelbtn { background: linear-gradient(180deg, #ff5b52, #e0342a); color: #fff; }
+
+/* hover — только украшение для мыши (на тачскрине правил нет вовсе) */
+@media (hover: hover) and (pointer: fine) {
+  .card:hover { border-color: #2b3444; }
+  .chip:hover { border-color: var(--accent); color: var(--tx); }
+  .trk-del:hover { color: var(--red); }
+}

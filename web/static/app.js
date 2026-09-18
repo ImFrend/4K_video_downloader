@@ -229,6 +229,9 @@ function updateCard(n, p) {
   else if (p.status === "ready" || p.status === "queued") { sub = `${p.total} треков`; st = p.status === "queued" ? "в очереди" : ""; }
   else if (p.status === "downloading") { sub = `${p.done} / ${p.total}`; st = "⟳"; }
   else if (p.status === "done") { sub = `готово · ${p.total}`; st = "✓"; cls += " done"; }
+  else if (p.status === "cancelling") { sub = "останавливаю…"; st = "⟳"; }
+  else if (p.status === "cleaning") { sub = "очистка хвостов…"; st = "⟳"; }
+  else if (p.status === "cancelled") { sub = `отменён · ${p.done}/${p.total}`; st = "⊘"; }
   else if (p.status === "error") { sub = p.error || "ошибка"; st = "✕"; cls += " err"; }
   if (st === "⟳") cls += " spin";        // «шестерёнка» статуса крутится (GPU)
   r.sub.textContent = sub;
@@ -353,8 +356,12 @@ function renderDetail() {
   }
 }
 
-// ─────────── go / cookies / sheet ───────────
-E("goBtn").addEventListener("click", () => { if (!E("goBtn").disabled) api("/api/start"); });
+// ─────────── go / cancel / cookies / sheet ───────────
+E("goBtn").addEventListener("click", () => {
+  const btn = E("goBtn");
+  if (btn.classList.contains("cancelbtn")) { api("/api/cancel", {}); return; }  // отмена всей очереди
+  if (!btn.disabled) api("/api/start");
+});
 
 function renderGo() {
   const btn = E("goBtn");
@@ -362,11 +369,18 @@ function renderGo() {
   const ready = pls.some((p) => p.status === "ready" || p.status === "queued");
   if (state.running) {
     const done = pls.filter((p) => p.status === "done").length;
-    btn.textContent = `Качаю… ${done}/${pls.length}`;
-    btn.classList.add("running"); btn.disabled = true;
+    const cleaning = pls.some((p) => p.status === "cleaning");
+    const stopping = pls.some((p) => p.status === "cancelling");
+    if (cleaning || stopping) {                       // отмена уже идёт → блокируем
+      btn.textContent = cleaning ? "Очистка…" : "Останавливаю…";
+      btn.classList.add("running"); btn.classList.remove("cancelbtn"); btn.disabled = true;
+    } else {                                          // идёт загрузка → кнопка = «Отменить»
+      btn.textContent = `⛔ Отменить · ${done}/${pls.length}`;
+      btn.classList.add("cancelbtn"); btn.classList.remove("running"); btn.disabled = false;
+    }
   } else {
     btn.textContent = "▸ Скачать всё";
-    btn.classList.remove("running"); btn.disabled = !ready;
+    btn.classList.remove("running", "cancelbtn"); btn.disabled = !ready;
   }
 }
 
@@ -477,7 +491,7 @@ E("pasteBtn").addEventListener("click", async () => {
   try { url = (await navigator.clipboard.readText() || "").trim(); } catch (_) {}
   if (!url) url = (prompt("Ссылка на плейлист / My Mix / список видео:") || "").trim();
   if (!url) return;
-  const r = await api("/api/add", { url });
+  const r = await api("/api/add", { url, limit: libLimit });
   if (!r.ok) hint(r.msg, "err");
   else if (r.msg && r.msg !== "ok") hint(r.msg, "warn");   // добавили, но с оговоркой
   else hint("Добавлено ✓");
@@ -537,3 +551,126 @@ function connect() {
 E("view-detail").hidden = false;        // позиционируется трансформом за экраном
 fetch("/api/state").then((r) => r.json()).then(onState).catch(() => {});
 connect();
+
+// ═══════════ Библиотека (скачанное) ═══════════
+// Отдельный домен от Очереди: источник — диск (GET /api/library), не SSE.
+let libLimit = 25;                       // глубина снимка микса (чипы под «Вставить»)
+const libState = { list: [], detail: null, key: null };
+
+const apiGet = async (p) => { try { return await (await fetch(p)).json(); } catch (_) { return null; } };
+function trkPlur(n) {
+  const a = n % 10, b = n % 100;
+  if (a === 1 && b !== 11) return "трек";
+  if (a >= 2 && a <= 4 && (b < 10 || b >= 20)) return "трека";
+  return "треков";
+}
+function fmtSize(b) {
+  if (!b) return "0 МБ";
+  const mb = b / 1048576;
+  return mb >= 1024 ? (mb / 1024).toFixed(1) + " ГБ" : Math.round(mb) + " МБ";
+}
+// обложка: глиф ♪ по умолчанию, поверх — картинка из /api/cover (если есть)
+function setCover(el, url) {
+  const img = new Image();
+  img.onload = () => { el.textContent = ""; img.className = "cover-img"; el.appendChild(img); };
+  img.src = url;                          // onerror → глиф остаётся
+}
+function coverEl(cls, url) {
+  const el = document.createElement("div");
+  el.className = cls; el.textContent = "♪";
+  setCover(el, url);
+  return el;
+}
+const covUrl = (key, file) =>
+  "/api/cover?pl=" + encodeURIComponent(key) + (file ? "&file=" + encodeURIComponent(file) : "");
+
+// ── чипы лимита ──
+E("limitChips").querySelectorAll(".chip").forEach((c) => {
+  c.addEventListener("click", () => {
+    E("limitChips").querySelectorAll(".chip").forEach((x) => x.classList.remove("on"));
+    c.classList.add("on"); libLimit = parseInt(c.dataset.n, 10);
+  });
+});
+
+// ── список плейлистов ──
+E("libBtn").addEventListener("click", () => { loadLibrary(); document.body.classList.add("library"); });
+E("libBack").addEventListener("click", () => document.body.classList.remove("library"));
+
+async function loadLibrary() {
+  const d = await apiGet("/api/library");
+  libState.list = (d && d.playlists) || [];
+  renderLibrary();
+}
+function badgeFor(status) {
+  if (status === "partially_downloaded") return { cls: "partial", tx: "частично" };
+  if (status === "cancelled") return { cls: "cancelled", tx: "отменён" };
+  return null;
+}
+function renderLibrary() {
+  const ul = E("libList"); ul.innerHTML = "";
+  E("libEmpty").hidden = libState.list.length > 0;
+  for (const p of libState.list) {
+    const li = document.createElement("li"); li.className = "card";
+    li.appendChild(coverEl("thumb", covUrl(p.key)));
+    const body = document.createElement("div"); body.className = "card-body";
+    const title = document.createElement("div"); title.className = "card-title"; title.textContent = p.title;
+    const sub = document.createElement("div"); sub.className = "card-sub";
+    sub.textContent = `${p.count} ${trkPlur(p.count)} · ${fmtSize(p.size)}`;
+    body.appendChild(title); body.appendChild(sub); li.appendChild(body);
+    const b = badgeFor(p.status);
+    if (b) { const el = document.createElement("span"); el.className = "badge " + b.cls; el.textContent = b.tx; li.appendChild(el); }
+    const chev = document.createElement("span"); chev.className = "chev"; chev.textContent = "›"; li.appendChild(chev);
+    li.addEventListener("click", () => openLibDetail(p.key));
+    ul.appendChild(li);
+  }
+}
+
+// ── детали плейлиста (обложки + удаление с перенумерацией) ──
+function openLibDetail(key) { libState.key = key; loadLibDetail(); document.body.classList.add("libdetail"); }
+E("libDetailBack").addEventListener("click", () => { document.body.classList.remove("libdetail"); libState.key = null; });
+
+async function loadLibDetail() {
+  const d = await apiGet("/api/library/detail?pl=" + encodeURIComponent(libState.key));
+  if (!d) { document.body.classList.remove("libdetail"); return; }
+  libState.detail = d; renderLibDetail();
+}
+function renderLibDetail() {
+  const d = libState.detail; if (!d) return;
+  E("libDetailTitle").textContent = d.title || "";
+  const cov = E("libDetailCover"); cov.textContent = "♪"; cov.innerHTML = "♪";
+  setCover(cov, covUrl(d.key));
+  const b = badgeFor(d.status);
+  E("libDetailStat").innerHTML = `<b>${d.count}</b> ${trkPlur(d.count)}` + (b ? ` · ${b.tx}` : "");
+
+  const ul = E("libTrackList"); ul.innerHTML = "";
+  for (const t of d.tracks) {
+    const li = document.createElement("li"); li.className = "trk" + (t.status !== "done" ? " notdone" : "");
+    const num = document.createElement("span"); num.className = "trk-i"; num.textContent = String(t.n).padStart(2, "0");
+    li.appendChild(num);
+    li.appendChild(coverEl("trk-cov", covUrl(d.key, t.file || "")));
+    const body = document.createElement("div"); body.className = "trk-body";
+    const title = document.createElement("div"); title.className = "trk-title"; title.textContent = t.title || t.file || "—";
+    const meta = document.createElement("div"); meta.className = "trk-meta";
+    const bits = [];
+    if (t.status !== "done") bits.push("не скачан");
+    if (t.size) bits.push(fmtSize(t.size));
+    if (t.codec) bits.push(t.codec);
+    meta.textContent = bits.join(" · ");
+    body.appendChild(title); body.appendChild(meta); li.appendChild(body);
+    const del = document.createElement("button");
+    del.className = "trk-del"; del.setAttribute("data-action", "delete");
+    del.setAttribute("aria-label", "Удалить"); del.textContent = "🗑";
+    del.addEventListener("click", (e) => { e.stopPropagation(); deleteTrack(t); });
+    li.appendChild(del);
+    ul.appendChild(li);
+  }
+}
+async function deleteTrack(t) {
+  if (!(t.id || t.file)) return;
+  const r = await api("/api/library/delete", { pl: libState.key, id: t.id || "", file: t.file || "" });
+  if (r && r.ok && r.detail) {
+    libState.detail = r.detail;
+    renderLibDetail();       // n перенумеровались сами (позиция в списке)
+    loadLibrary();           // обновить счётчик/размер в списке
+  }
+}

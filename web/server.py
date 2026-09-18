@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import os
@@ -64,6 +65,45 @@ def _codec_of(fname: Optional[str]) -> Optional[str]:
     if not fname:
         return None
     return _CODEC_BY_EXT.get(os.path.splitext(fname)[1].lower())
+
+
+_COVER_CACHE = config.ROOT / ".cache" / "covers"
+
+
+def _cover_file(folder: Path, file: Optional[str]) -> Optional[Path]:
+    """Путь к обложке для отдачи. Сначала готовый sidecar-jpg (SAVE_THUMBNAILS),
+    иначе извлекаем встроенную обложку из m4a через ffmpeg и кешируем ВНЕ Music
+    (в ROOT/.cache), чтобы не мусорить в фонотеке."""
+    if file and ("/" in file or "\\" in file or ".." in file):
+        return None                                   # не выпускаем за папку
+    if file:
+        side = folder / (os.path.splitext(file)[0] + ".jpg")
+        if side.exists():
+            return side
+        audio = folder / file
+        if not audio.is_file():
+            return None
+    else:
+        side = library._find_cover(folder)
+        if side:
+            return folder / side
+        m = sorted(folder.glob("[0-9][0-9] - *.m4a"))   # обложка папки = обложка 1-го трека
+        if not m:
+            return None
+        audio = m[0]
+    try:
+        st = audio.stat()
+        key = hashlib.sha1(f"{audio}:{int(st.st_mtime)}".encode()).hexdigest()[:20]
+        dest = _COVER_CACHE / (key + ".jpg")
+        if dest.exists():
+            return dest
+        _COVER_CACHE.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(audio),
+                        "-an", "-frames:v", "1", "-c:v", "mjpeg", str(dest)],
+                       capture_output=True, timeout=20)
+        return dest if dest.exists() and dest.stat().st_size > 0 else None
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 # ──────────────────────────── модель очереди ────────────────────────────
@@ -555,6 +595,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(404, b"not found", "text/plain")
             else:
                 self._json(d)
+        elif path == "/api/cover":
+            qs = parse_qs(urlparse(self.path).query)
+            folder = library.resolve_folder(config.OUTPUT_DIR, (qs.get("pl") or [""])[0])
+            cf = _cover_file(folder, (qs.get("file") or [None])[0]) if folder else None
+            if cf and cf.is_file():
+                self._send(200, cf.read_bytes(), "image/jpeg")
+            else:
+                self._send(404, b"no cover", "text/plain")
         else:
             self._send(404, b"not found", "text/plain")
 
