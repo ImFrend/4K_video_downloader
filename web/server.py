@@ -588,6 +588,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/library":
             self._json({"root": str(config.OUTPUT_DIR),
                         "playlists": library.scan_library(config.OUTPUT_DIR)})
+        elif path == "/api/tracks":
+            self._json({"tracks": library.all_tracks(config.OUTPUT_DIR)})
         elif path == "/api/library/detail":
             key = (parse_qs(urlparse(self.path).query).get("pl") or [""])[0]
             d = library.detail(config.OUTPUT_DIR, key)

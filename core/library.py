@@ -238,6 +238,20 @@ def scan_library(root) -> list:
     return out
 
 
+def all_tracks(root) -> list:
+    """Плоский список всех СКАЧАННЫХ треков по всем плейлистам (для экрана
+    «Скачанные»). Новые плейлисты — сверху, внутри — в порядке трека."""
+    out = []
+    for pl in scan_library(root):
+        d = detail(root, pl["key"])
+        if not d:
+            continue
+        for t in d["tracks"]:
+            if t.get("status") == "done":
+                out.append({"pl": pl["key"], "pl_title": pl["title"], **t})
+    return out
+
+
 def resolve_folder(root, key: str) -> Optional[Path]:
     """Папка плейлиста по ключу с защитой от path-traversal (ключ приходит из
     сети). None — если вне OUTPUT_DIR или не папка."""
