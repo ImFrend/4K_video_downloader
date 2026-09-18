@@ -250,6 +250,58 @@ def resolve_folder(root, key: str) -> Optional[Path]:
     return target if target.is_dir() else None
 
 
+def _remove_done_id(folder: Path, vid: Optional[str]) -> None:
+    """Убрать video-id из `.downloaded.txt` — иначе повторная закачка сочтёт трек
+    дублем и пропустит его."""
+    if not vid:
+        return
+    p = _archive_path(folder)
+    try:
+        ids = [x.strip() for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
+    except OSError:
+        return
+    kept = [x for x in ids if x != vid]
+    if len(kept) != len(ids):
+        try:
+            p.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+        except OSError:
+            pass
+
+
+def delete_track(root, key: str, ident: str) -> Optional[dict]:
+    """Удалить один трек: файл + id из архива + из манифеста. `ident` — имя файла
+    или video-id. Возвращает {ok, deleted: <абсолютный путь>} (путь нужен серверу
+    для termux-media-scan, чтобы MediaStore не держал «призрак»), либо None если
+    папка/трек не найдены. Файлы соседей НЕ переименовываем — номер в UI и так
+    динамический (detail(): `n`)."""
+    folder = resolve_folder(root, key)
+    if folder is None:
+        return None
+    man = reconcile(folder)
+    hit = next((t for t in man["tracks"] if t.get("file") == ident or t.get("id") == ident), None)
+    if hit is None:
+        return None
+    deleted = None
+    if hit.get("file"):
+        fpath = folder / hit["file"]
+        try:
+            if fpath.exists():
+                fpath.unlink()
+            deleted = str(fpath)   # ПОСЛЕ unlink: сервер скажет MediaStore «файла нет»
+        except OSError:
+            return {"ok": False, "deleted": None}
+    _remove_done_id(folder, hit.get("id"))
+    man["tracks"] = [t for t in man["tracks"] if t is not hit]
+    # осознанное удаление уменьшает и «сколько хотели» → полный плейлист остаётся
+    # complete после курирования, а не превращается в partially_downloaded.
+    exp = man.get("expected")
+    if isinstance(exp, int) and exp > 0:
+        man["expected"] = exp - 1
+    man["status"] = derive_pl_status(man["tracks"], man.get("expected"))
+    save_manifest(folder, man)
+    return {"ok": True, "deleted": deleted}
+
+
 def detail(root, key: str) -> Optional[dict]:
     """Полная карточка плейлиста: треки с ДИНАМИЧЕСКИМ номером `n` (позиция в
     списке — это и есть «трек 1, 2, 3…», независимо от имён файлов)."""

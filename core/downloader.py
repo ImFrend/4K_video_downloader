@@ -223,26 +223,28 @@ class DownloadManager:
         )
 
     # ---- 1. разбор плейлиста/трека (лёгкий) ----
-    def probe(self, url: str) -> Playlist:
+    def probe(self, url: str, limit: Optional[int] = None) -> Playlist:
         ids = self._parse_id_list(url)
         if ids:                              # вставили список видео, а не ссылку
             return self._probe_ids(ids)
 
-        # Микс: RD-станция привязана к идентичности сессии в cookies — и это
-        # решает всё. С cookies того браузера, где ты смотришь миксы, yt-dlp
-        # воспроизводит ЕГО станцию сам (проверено: 25 из 25). Раньше здесь была
-        # ветка «снять очередь браузером в proot» — она существовала ровно
-        # потому, что сессию поднимал отдельный Chromium и станция получалась
-        # чужая (2 из 25). Источник cookies один — ветка не нужна.
+        # Микс: RD-станция привязана к идентичности сессии в cookies — её состав
+        # определяет аккаунт из cookies. ВАЖНО: станция персонализируется под
+        # клиент/сессию и НЕ совпадает 1:1 с очередью браузера (замер: 5 из 25);
+        # точное совпадение — только через снимок id (см. _parse_id_list). Радио
+        # бесконечно и отдаёт сколько попросишь → берём снимок фиксированной
+        # глубины (limit), чтобы не уходить в бесконечность.
         url = self._normalize_mix_url(url)   # My Mix `playlist?list=RD…` → watch?v=<сид>&list=…
         opts = self._base_opts() | {
             "skip_download": True,
             "extract_flat": "in_playlist",
         }
-        # лимит: для микса — жёсткий снимок, чтобы не виснуть на бесконечном радио
-        limit = config.MAX_PLAYLIST_ITEMS
+        # глубина снимка: для микса — запрошенная (или дефолт), но не выше потолка
         if self._is_mix(url):
-            limit = min(limit or config.MIX_SNAPSHOT_LIMIT, config.MIX_SNAPSHOT_LIMIT)
+            base = limit or config.MIX_SNAPSHOT_LIMIT
+            limit = min(base, config.MIX_HARD_CEILING)
+        elif limit is None:
+            limit = config.MAX_PLAYLIST_ITEMS   # обычный плейлист: как было (None = весь)
         if limit:
             opts["playlistend"] = limit
 

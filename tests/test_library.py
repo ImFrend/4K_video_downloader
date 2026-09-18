@@ -202,5 +202,57 @@ class PathTraversalGuard(unittest.TestCase):
         self.assertIsNone(lib.detail(self.tmp, "../"))
 
 
+class DeleteTrack(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.pl = self.tmp / "PL"
+        f1 = touch_track(self.pl, 1, "A")
+        f2 = touch_track(self.pl, 2, "B")
+        f3 = touch_track(self.pl, 3, "C")
+        (self.pl / lib.ARCHIVE_NAME).write_text("ida\nidb\nidc\n", encoding="utf-8")
+        lib.save_manifest(self.pl, {
+            "title": "PL", "expected": 3,
+            "tracks": [
+                {"id": "ida", "file": f1.name, "title": "A", "index": 1, "status": "done"},
+                {"id": "idb", "file": f2.name, "title": "B", "index": 2, "status": "done"},
+                {"id": "idc", "file": f3.name, "title": "C", "index": 3, "status": "done"},
+            ],
+        })
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_delete_by_id_removes_file_archive_manifest(self):
+        res = lib.delete_track(self.tmp, "PL", "idb")
+        self.assertTrue(res["ok"])
+        self.assertTrue(res["deleted"].endswith("02 - B.m4a"))
+        self.assertFalse((self.pl / "02 - B.m4a").exists())            # файл удалён
+        ids = (self.pl / lib.ARCHIVE_NAME).read_text().split()
+        self.assertNotIn("idb", ids)                                    # id из архива убран
+        self.assertIn("ida", ids)
+        man = lib.load_manifest(self.pl)
+        self.assertEqual([t["id"] for t in man["tracks"]], ["ida", "idc"])
+        # осознанное удаление из полного плейлиста → остаётся complete, не partial
+        self.assertEqual(man["expected"], 2)
+        self.assertEqual(man["status"], lib.STATUS_COMPLETE)
+
+    def test_delete_by_filename(self):
+        res = lib.delete_track(self.tmp, "PL", "01 - A.m4a")
+        self.assertTrue(res["ok"])
+        self.assertFalse((self.pl / "01 - A.m4a").exists())
+
+    def test_ui_renumbers_after_delete(self):
+        lib.delete_track(self.tmp, "PL", "idb")                          # удалили средний
+        d = lib.detail(self.tmp, "PL")
+        self.assertEqual([t["n"] for t in d["tracks"]], [1, 2])         # UI: 1,2 (без дыры)
+        self.assertEqual([t["title"] for t in d["tracks"]], ["A", "C"])
+        self.assertEqual([t["file"][:2] for t in d["tracks"]], ["01", "03"])  # файлы как есть
+
+    def test_delete_unknown_returns_none(self):
+        self.assertIsNone(lib.delete_track(self.tmp, "PL", "zzz"))
+        self.assertIsNone(lib.delete_track(self.tmp, "NoSuch", "ida"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -30,7 +30,7 @@ from urllib.parse import parse_qs, urlparse
 import config
 from core import library
 from core.downloader import (DownloadManager, Track, _cleanup_partials,
-                             _reap_orphans, _safe)
+                             _media_scan, _reap_orphans, _safe)
 from auth.cookies_export import (cookies_to_netscape, netscape_has_auth,
                                  validate_netscape)
 from auth.refresh import ensure_fresh_cookies, probe_session
@@ -81,6 +81,7 @@ class Job:
         self.tracks: list[Track] = []
         self.dm: Optional[DownloadManager] = None   # свой на джоб → cancel скоупится
         self.cancel_requested = False
+        self.limit: Optional[int] = None            # глубина снимка микса (из UI)
 
 
 class JobManager:
@@ -190,7 +191,7 @@ class JobManager:
             self._bump()
 
     # ---- очередь ----
-    def add_url(self, url: str) -> tuple[Optional[int], str]:
+    def add_url(self, url: str, limit: Optional[int] = None) -> tuple[Optional[int], str]:
         url = (url or "").strip()
         # принимаем и ссылку, и вставленный список видео (снимок очереди с ПК)
         if not url.startswith("http") and not DownloadManager._parse_id_list(url):
@@ -203,6 +204,7 @@ class JobManager:
                 return None, "уже в очереди"
             self._counter += 1
             job = Job(self._counter, url)
+            job.limit = limit
             self.jobs.append(job)
             self._bump()
         threading.Thread(target=self._probe, args=(job,), daemon=True).start()
@@ -214,7 +216,7 @@ class JobManager:
 
     def _probe(self, job: Job) -> None:
         try:
-            pl = self.dm.probe(job.url)
+            pl = self.dm.probe(job.url, limit=job.limit)
             with self.lock:
                 job.tracks = pl.tracks
                 job.title = pl.title or (pl.tracks[0].title if pl.tracks else "Плейлист")
@@ -622,7 +624,12 @@ class Handler(BaseHTTPRequestHandler):
         body = self._read_json()
 
         if path == "/api/add":
-            jid, msg = MANAGER.add_url(body.get("url", ""))
+            lim = body.get("limit")
+            try:
+                lim = int(lim) if lim else None
+            except (TypeError, ValueError):
+                lim = None
+            jid, msg = MANAGER.add_url(body.get("url", ""), limit=lim)
             self._json({"ok": jid is not None, "id": jid, "msg": msg})
         elif path == "/api/settings":
             MANAGER.set_settings(body)
@@ -637,6 +644,17 @@ class Handler(BaseHTTPRequestHandler):
             jid = body.get("id")
             ok = MANAGER.cancel(int(jid) if jid is not None else None)
             self._json({"ok": ok})
+        elif path == "/api/library/delete":
+            ident = str(body.get("id") or body.get("file") or "")
+            res = library.delete_track(config.OUTPUT_DIR, str(body.get("pl") or ""), ident)
+            if res is None:
+                self._send(404, b"not found", "text/plain")
+            else:
+                if res.get("deleted"):
+                    _media_scan(res["deleted"])   # дропнуть «призрак» из MediaStore
+                # свежая карточка с уже перенумерованными n
+                d = library.detail(config.OUTPUT_DIR, str(body.get("pl") or ""))
+                self._json({"ok": res["ok"], "detail": d})
         elif path == "/api/check":
             ok, msg = MANAGER.start_check()
             self._json({"ok": ok, "msg": msg})
