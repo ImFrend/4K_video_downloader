@@ -69,6 +69,7 @@ class DownloadManager:
     def __init__(self, output_dir: Optional[Path] = None, cookies: Optional[Path] = None):
         self.output_dir = Path(output_dir or config.OUTPUT_DIR)
         self._cancelled = False
+        self._cancel_tracks: set[str] = set()   # отменённые поштучно (id или "#индекс")
         self._archive_lock = threading.Lock()  # сериализуем запись архива id
         if cookies is not None:
             self.cookies: Optional[Path] = cookies
@@ -79,6 +80,22 @@ class DownloadManager:
 
     def cancel(self) -> None:
         self._cancelled = True
+
+    def cancel_track(self, ident: str) -> None:
+        """Отменить ОДИН трек, не трогая остальные. ident — video-id или '#индекс'.
+        Ждущий не стартует, качающийся встаёт на следующем hook-тике."""
+        if ident:
+            self._cancel_tracks.add(ident)
+
+    def _track_cancelled(self, track: "Track") -> bool:
+        """Отменён ли этот трек — целиком (весь job) или поштучно."""
+        if self._cancelled:
+            return True
+        if track.id and track.id in self._cancel_tracks:
+            return True
+        if track.playlist_index and f"#{track.playlist_index}" in self._cancel_tracks:
+            return True
+        return False
 
     def _base_opts(self) -> dict:
         opts = {
@@ -287,7 +304,7 @@ class DownloadManager:
                        subdir: Optional[str] = None,
                        album: Optional[str] = None,
                        track_total: Optional[int] = None) -> None:
-        if self._cancelled:                     # уже отменили — не стартуем трек вообще
+        if self._track_cancelled(track):        # уже отменили — не стартуем трек вообще
             track.status, track.error = "cancelled", "отменено"
             on_progress(track)
             return
@@ -301,7 +318,7 @@ class DownloadManager:
         last_emit = [0.0]  # троттлинг UI: не чаще ~8 раз/сек на трек
 
         def hook(d: dict) -> None:
-            if self._cancelled:
+            if self._track_cancelled(track):
                 raise yt_dlp.utils.DownloadCancelled()
             st = d.get("status")
             if st == "downloading":
@@ -388,6 +405,9 @@ class DownloadManager:
             on_progress(track)
         except yt_dlp.utils.DownloadCancelled:
             track.status, track.error = "cancelled", "отменено"
+            # подмести хвосты именно этого трека (по префиксу «NN - »), не задев
+            # соседей, что качаются параллельно в той же папке
+            _cleanup_track_partials(folder, track.playlist_index)
             on_progress(track)
         except Exception as ex:  # noqa: BLE001
             track.status, track.error = "error", _short_err(ex)
@@ -550,6 +570,27 @@ def _cleanup_partials(folder: Path) -> int:
     try:
         for pat in _PARTIAL_GLOBS:
             for p in folder.glob(pat):
+                try:
+                    p.unlink()
+                    n += 1
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return n
+
+
+def _cleanup_track_partials(folder: Path, index: Optional[int]) -> int:
+    """Хвосты ОДНОГО трека — по префиксу имени «NN - » (zero-padded индекс).
+    Соседние треки в той же папке начинаются с другого индекса, поэтому их
+    .part не тронем. Без индекса (одиночное видео) — точечно нечего искать."""
+    if not index:
+        return 0
+    n = 0
+    prefix = f"{index:02d} - "
+    try:
+        for pat in _PARTIAL_GLOBS:
+            for p in folder.glob(prefix + pat):
                 try:
                     p.unlink()
                     n += 1

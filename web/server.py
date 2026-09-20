@@ -121,6 +121,7 @@ class Job:
         self.tracks: list[Track] = []
         self.dm: Optional[DownloadManager] = None   # свой на джоб → cancel скоупится
         self.cancel_requested = False
+        self.pre_cancel: set[str] = set()           # треки, отменённые поштучно ДО старта
         self.limit: Optional[int] = None            # глубина снимка микса (из UI)
 
 
@@ -294,6 +295,35 @@ class JobManager:
                 j.dm.cancel()
         return bool(targets)
 
+    def cancel_track(self, jid: int, i: int) -> bool:
+        """Отменить/убрать ОДИН трек микса, не трогая остальные. i — номер строки
+        (playlist_index или позиция). Ждущий не стартует, качающийся встаёт на
+        следующем hook-тике; хвосты .part метёт download_track точечно."""
+        with self.lock:
+            job = next((j for j in self.jobs if j.id == jid), None)
+            if job is None:
+                return False
+            pos = next((k for k, t in enumerate(job.tracks)
+                        if (t.playlist_index or k + 1) == i), None)
+            if pos is None:
+                return False
+            t = job.tracks[pos]
+            ident = t.id or (f"#{t.playlist_index}" if t.playlist_index else "")
+            if ident:
+                job.pre_cancel.add(ident)          # применится и если dm создастся позже
+                if job.dm is not None:
+                    job.dm.cancel_track(ident)     # уже качается → встанет на hook-тике
+            # убираем из вида очереди (download_all держит старый список — он дойдёт
+            # до этого трека и просто вернётся отменённым)
+            job.tracks = [x for k, x in enumerate(job.tracks) if k != pos]
+            if not job.tracks:                     # микс опустел → отменяем весь и убираем
+                job.cancel_requested = True
+                if job.dm is not None:
+                    job.dm.cancel()
+                self.jobs = [j for j in self.jobs if j is not job]
+            self._bump()
+            return True
+
     def set_settings(self, data: dict) -> None:
         with self.lock:
             for k in ("platform", "quality", "streams"):
@@ -367,6 +397,8 @@ class JobManager:
 
     def _run_one(self, job: Job, sem: threading.Semaphore, tracks_per: int) -> None:
         job.dm = DownloadManager()             # свой на джоб → отмена не заденет соседей
+        for ident in job.pre_cancel:           # поштучные отмены, сделанные до старта
+            job.dm.cancel_track(ident)
         if job.cancel_requested:               # отменили ещё в очереди → стартуем отменённым
             job.dm.cancel()
         pl_dir = config.OUTPUT_DIR / _safe(job.title or "playlist")
@@ -696,6 +728,11 @@ class Handler(BaseHTTPRequestHandler):
             jid = body.get("id")
             ok = MANAGER.cancel(int(jid) if jid is not None else None)
             self._json({"ok": ok})
+        elif path == "/api/track/cancel":
+            jid, i = body.get("id"), body.get("i")
+            ok = (jid is not None and i is not None
+                  and MANAGER.cancel_track(int(jid), int(i)))
+            self._json({"ok": bool(ok)})
         elif path == "/api/library/delete":
             ident = str(body.get("id") or body.get("file") or "")
             res = library.delete_track(config.OUTPUT_DIR, str(body.get("pl") or ""), ident)
