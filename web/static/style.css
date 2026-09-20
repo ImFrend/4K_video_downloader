@@ -228,3 +228,21 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bord
 .tab-add svg { width: 26px; height: 26px; color: var(--tx); box-sizing: content-box; padding: 6px;
   border-radius: 50%; background: rgba(255, 255, 255, .10); }
 .tab-add:active svg { background: rgba(255, 255, 255, .18); }
+
+/* ══════════ SNACKBAR ══════════ */
+/* тёмный тост как у YouTube: «Удалено · ОТМЕНИТЬ», без красного/зелёного */
+.snackbar { position: fixed; left: 12px; right: 12px; z-index: 50;
+  bottom: calc(var(--tab-h) + var(--safe-b) + 12px);
+  display: flex; align-items: center; gap: 12px;
+  background: #272727; color: var(--tx); border-radius: 10px; padding: 13px 8px 13px 16px;
+  font: 500 13.5px var(--sans); box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
+  transform: translateY(14px); opacity: 0; pointer-events: none;
+  transition: transform .2s var(--ease), opacity .2s var(--ease); }
+.snackbar.show { transform: translateY(0); opacity: 1; pointer-events: auto; }
+.snackbar > span { flex: 1; min-width: 0; }
+.snackbar button { background: none; border: 0; color: var(--tx); font: 700 13px var(--sans);
+  text-transform: uppercase; letter-spacing: .4px; padding: 8px 12px; cursor: pointer; flex-shrink: 0; }
+.snackbar button:active { opacity: .6; }
+
+/* строка «уезжает» при свайпе — плавная уборка высоты */
+.swiped { overflow: hidden; }

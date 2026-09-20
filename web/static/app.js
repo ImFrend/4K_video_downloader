@@ -35,6 +35,65 @@ function badge(status) { if (status === "partially_downloaded") return { c: "par
 const SVG_TRASH = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>';
 const SVG_DLDONE = '<svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm-1.2 14.2L6.5 12l1.4-1.4 2.9 2.9 5.3-5.3L17.5 9.6l-6.7 6.6z"/></svg>';
 
+// ─────────── свайп ВПРАВО → удалить (родной жест очереди YouTube) ───────────
+// Строка едет за пальцем; за порогом улетает и схлопывается по высоте; недотянул
+// — пружиной назад. Вертикальный скролл не перехватываем (touch-action: pan-y).
+function attachSwipe(el, onDismiss) {
+  let sx = 0, sy = 0, dx = 0, drag = false, decided = false, horiz = false, pid = null;
+  el.style.touchAction = "pan-y";
+  const width = () => el.offsetWidth || 320;
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    sx = e.clientX; sy = e.clientY; dx = 0; drag = true; decided = false; horiz = false; pid = e.pointerId;
+    el.style.transition = "none";
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const mx = e.clientX - sx, my = e.clientY - sy;
+    if (!decided) {
+      if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+      decided = true; horiz = Math.abs(mx) > Math.abs(my);
+      if (horiz) { try { el.setPointerCapture(pid); } catch (_) {} }
+    }
+    if (!horiz) return;
+    e.preventDefault();
+    dx = Math.max(0, mx);                          // только вправо
+    el.style.transform = `translateX(${dx}px)`;
+    el.style.opacity = String(Math.max(0.12, 1 - dx / width() * 1.1));
+  });
+  const spring = () => {
+    el.style.transition = "transform .2s var(--spring), opacity .18s var(--ease)";
+    el.style.transform = "translateX(0)"; el.style.opacity = "1";
+  };
+  const fly = () => {
+    const h = el.offsetHeight; el.classList.add("swiped"); el.style.height = h + "px"; void el.offsetHeight;
+    el.style.transition = "transform .18s var(--ease), opacity .18s var(--ease), height .24s var(--ease) .04s, padding .24s var(--ease) .04s, margin .24s var(--ease) .04s";
+    el.style.transform = `translateX(${width()}px)`; el.style.opacity = "0";
+    el.style.height = "0"; el.style.paddingTop = "0"; el.style.paddingBottom = "0"; el.style.marginTop = "0"; el.style.marginBottom = "0";
+    setTimeout(() => el.remove(), 340);
+    onDismiss();
+  };
+  const settle = () => {
+    if (!drag) return; drag = false;
+    if (horiz && dx > Math.min(140, width() * 0.42)) fly(); else spring();
+  };
+  el.addEventListener("pointerup", settle);
+  el.addEventListener("pointercancel", () => { drag = false; spring(); });
+}
+
+// snackbar: файл/трек удаляются РЕАЛЬНО только по тайм-ауту → «Отменить» настоящая.
+let snackTimer = null, snackCommit = null;
+function hideSnack() { const b = E("snackbar"); b.classList.remove("show"); setTimeout(() => { if (!b.classList.contains("show")) b.hidden = true; }, 240); }
+function flushSnack() { if (snackTimer) { clearTimeout(snackTimer); snackTimer = null; } const c = snackCommit; snackCommit = null; hideSnack(); if (c) c(); }
+function showSnack(text, onUndo, onCommit, ms) {
+  flushSnack();                                    // прежнее удаление — сразу зафиксировать
+  const b = E("snackbar"); E("snackText").textContent = text; b.hidden = false;
+  requestAnimationFrame(() => b.classList.add("show"));
+  snackCommit = onCommit;
+  snackTimer = setTimeout(() => { snackTimer = null; const c = snackCommit; snackCommit = null; hideSnack(); if (c) c(); }, ms || 5000);
+  E("snackUndo").onclick = () => { if (snackTimer) { clearTimeout(snackTimer); snackTimer = null; } snackCommit = null; hideSnack(); if (onUndo) onUndo(); };
+}
+
 // ─────────── навигация (табы) ───────────
 function showTab(name) {
   document.body.dataset.tab = name;
@@ -160,22 +219,21 @@ function makeTrackRow(d, t) {
   if (t.status !== "done") bits.push("не скачан"); if (t.size) bits.push(fmtSize(t.size));
   inf.textContent = bits.join(" · "); m.appendChild(inf);
   li.appendChild(m);
-  const act = document.createElement("button"); act.className = "tr-act del"; act.innerHTML = SVG_TRASH; act.setAttribute("aria-label", "Удалить");
-  act.addEventListener("click", (e) => { e.stopPropagation(); delTrack(t, li); });
-  li.appendChild(act);
+  attachSwipe(li, () => libDismiss(t, li));       // свайп вправо → удалить
   return li;
 }
-// Удаление: карточка плавно уезжает и схлопывается, счётчик пересчитывается сразу.
-async function delTrack(t, li) {
-  if (!(t.id || t.file) || li.classList.contains("tr--removing")) return;
-  li.style.height = li.offsetHeight + "px"; void li.offsetHeight; li.classList.add("tr--removing");
-  let done = false; const fin = () => { if (done) return; done = true; li.remove(); renumber(); };
-  li.addEventListener("transitionend", (e) => { if (e.propertyName === "height") fin(); }); setTimeout(fin, 420);
-  const r = await api("/api/library/delete", { pl: libState.key, id: t.id || "", file: t.file || "" });
-  if (r && r.ok && r.detail) { libState.detail = r.detail; flatTracks = null; loadLibrary(); }
+// Удаление скачанного: строка уже уехала (attachSwipe), счётчик пересчитываем сразу,
+// а реальный unlink — только если snackbar «Отменить» не нажали за 5с.
+function libDismiss(t, li) {
+  if (!(t.id || t.file)) return;
+  renumber();
+  showSnack("Удалено", () => loadDetail(), async () => {
+    const r = await api("/api/library/delete", { pl: libState.key, id: t.id || "", file: t.file || "" });
+    if (r && r.ok && r.detail) { libState.detail = r.detail; flatTracks = null; loadLibrary(); }
+  });
 }
 function renumber() {
-  const rows = E("detTracks").querySelectorAll(".tr:not(.tr--removing)");
+  const rows = E("detTracks").querySelectorAll(".tr:not(.swiped)");
   let bytes = 0; rows.forEach((li) => { bytes += +li.dataset.size || 0; });
   E("detStat").textContent = `${rows.length} ${trkPlur(rows.length)} · ${fmtSize(bytes)}`;
 }
@@ -217,6 +275,16 @@ function makeQRow() {
     bar: li.querySelector(".qtr-bar"), fill: li.querySelector(".qtr-bar > i") };
 }
 const qMixes = new Map();  // id -> { el, title, cap, rm, tracksUl, rows: Map(i -> row) }
+const qSuppress = new Set();  // "mixId:i" — строки в ожидании подтверждения удаления
+// Свайп по треку очереди: убираем из вида, реальная отмена — по тайм-ауту snackbar.
+function qDismiss(mixId, i, el, m) {
+  const key = mixId + ":" + i;
+  qSuppress.add(key);
+  const row = m.rows.get(i); if (row && row.el === el) m.rows.delete(i);
+  showSnack("Удалено",
+    () => { qSuppress.delete(key); if (state) renderQueue(); },                       // отменить → вернуть
+    () => { api("/api/track/cancel", { id: mixId, i }); setTimeout(() => qSuppress.delete(key), 4000); });
+}
 function renderQueue() {
   const ul = E("queue"); const pls = state.playlists || [];
   E("qEmpty").hidden = pls.length > 0;
@@ -230,9 +298,14 @@ function renderQueue() {
     m.rm.style.display = state && state.running ? "none" : "";
     const seenT = new Set();
     for (const t of (p.tracks || [])) {
+      if (qSuppress.has(p.id + ":" + t.i)) continue;   // ждёт подтверждения удаления
       seenT.add(t.i);
       let row = m.rows.get(t.i);
-      if (!row) { row = makeQRow(); m.rows.set(t.i, row); m.tracksUl.appendChild(row.el); }
+      if (!row) {
+        row = makeQRow(); m.rows.set(t.i, row); m.tracksUl.appendChild(row.el);
+        const mixId = p.id, ti = t.i, rr = row, mm = m;
+        attachSwipe(row.el, () => qDismiss(mixId, ti, rr.el, mm));
+      }
       const s = trkStatus(t);
       row.title.textContent = t.title || ("трек " + t.i);
       row.status.textContent = s.label; row.status.className = "qtr-status " + s.cls;
