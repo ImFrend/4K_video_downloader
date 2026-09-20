@@ -1,6 +1,6 @@
-/* TermuxYoutube — фронт (структура YouTube Mobile).
-   Табы (Главная/Очередь/+/Настройки) + оверлей плейлиста; данные библиотеки —
-   REST (/api/library|tracks|detail|cover), очередь — SSE. */
+/* TermuxYoutube — фронт (1:1 YouTube Mobile).
+   Нижний бар: Главная / Очередь / + (Настройки — по шестерёнке в шапке).
+   Данные библиотеки — REST (/api/library|tracks|detail|cover), очередь — SSE. */
 
 const E = (id) => document.getElementById(id);
 const api = async (path, body) => {
@@ -10,9 +10,6 @@ const api = async (path, body) => {
   } catch (_) { return { ok: false, msg: "нет связи с сервером — запусти его заново" }; }
 };
 const apiGet = async (p) => { try { return await (await fetch(p)).json(); } catch (_) { return null; } };
-
-// индиго зафиксирована дефолтом
-try { document.documentElement.removeAttribute("data-pal"); } catch (_) {}
 
 let state = null, inited = false, sliderDrag = false;
 const cards = new Map();
@@ -49,6 +46,7 @@ function showTab(name) {
 }
 document.querySelectorAll(".tab[data-tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 E("gearBtn").addEventListener("click", () => showTab("settings"));
+E("setBack").addEventListener("click", () => showTab("home"));
 
 // ─────────── + / вставка ───────────
 E("addBtn").addEventListener("click", () => { showTab("queue"); doPaste(); });

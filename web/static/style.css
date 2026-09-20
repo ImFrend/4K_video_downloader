@@ -221,6 +221,7 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bord
   font: 500 10.5px var(--sans); }
 .tab svg { width: 23px; height: 23px; }
 .tab.on { color: var(--tx); }
-.tab-add { flex: 0 0 auto; width: 66px; }
-.tab-add svg { width: 24px; height: 24px; color: #fff; box-sizing: content-box; padding: 5px 15px;
-  border-radius: 10px; background: linear-gradient(180deg, var(--accent), var(--accent-deep)); }
+/* «+» как в YouTube: тонкий плюс в лёгком сером круге, без заливки */
+.tab-add svg { width: 26px; height: 26px; color: var(--tx); box-sizing: content-box; padding: 6px;
+  border-radius: 50%; background: rgba(255, 255, 255, .10); }
+.tab-add:active svg { background: rgba(255, 255, 255, .18); }
