@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <style>
+    /* та же приборная палитра, что в самой качалке */
+    body {
+      margin: 0; width: 260px; padding: 16px;
+      background: #0c0e12; color: #edeef2;
+      font: 14px/1.5 -apple-system, Roboto, system-ui, sans-serif;
+    }
+    h1 { margin: 0 0 12px; font: 600 12px/1.2 ui-monospace, monospace;
+         letter-spacing: .14em; text-transform: uppercase; color: #8b93a3; }
+    #msg { min-height: 40px; }
+    #msg b { display: block; margin-bottom: 3px; }
+    .ok  b { color: #32d74b; }
+    .err b { color: #ff453a; }
+    .dim { color: #8b93a3; font-size: 12px; }
+    button {
+      width: 100%; margin-top: 12px; padding: 11px; border: 0; border-radius: 10px;
+      background: linear-gradient(180deg, #3ea0ff, #0a6fe0); color: #fff;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { background: #12151b; color: #8b93a3; }
+  </style>
+</head>
+<body>
+  <h1>TermuxYoutube</h1>
+  <div id="msg"><b>Отправляю…</b><span class="dim">качалка должна быть запущена</span></div>
+  <button id="again" disabled>Отправить ещё раз</button>
+  <script src="popup.js"></script>
+</body>
+</html>
