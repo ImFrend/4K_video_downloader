@@ -1,45 +1,31 @@
-/* TermuxYoutube — структура YouTube Mobile. Палитра/токены сохранены (индиго
-   дефолт, темы переключаются в настройках). Раскладка/сетка — как в клиенте YT. */
+/* TermuxYoutube — 1:1 YouTube Mobile. Палитра YouTube: почти чёрный фон,
+   белый текст, серый вторичный, красный акцент. Индиго и альт-темы убраны. */
 
 :root {
-  --bg: #121317;
-  --surface: #1a1b21;
-  --surface-2: #23252d;
-  --line: #2c2f39;
-  --tx: #e9eaef;
-  --tx-2: #9ca2b0;
-  --tx-3: #5a5f6c;
-  --accent: #7c8dff;
-  --accent-2: #a6b2ff;
-  --accent-deep: #5566e0;
-  --glow: rgba(124, 141, 255, .13);
-  --green: #3ddc84;
-  --yellow: #f5c451;
-  --red: #f76d6d;
+  --bg: #0f0f0f;            /* фон приложения YouTube */
+  --surface: #212121;       /* приподнятые поверхности (кнопки, карточки) */
+  --surface-2: #272727;     /* чипы, вложенные поверхности */
+  --line: #303030;          /* разделители */
+  --tx: #f1f1f1;            /* основной текст */
+  --tx-2: #aaaaaa;          /* вторичный текст (канал • просмотры) */
+  --tx-3: #717171;          /* третичный / плейсхолдеры */
+  --accent: #ff0033;        /* красный YouTube */
+  --accent-2: #ff5a76;
+  --accent-deep: #d40028;
+  --glow: transparent;      /* YouTube плоский — без цветного ореола фона */
+  --green: #2ba640;         /* только LED связи / индикаторы, не статусы загрузки */
+  --yellow: #ffd24d;
+  --red: #ff4e45;
   --r-s: 8px;
   --r-m: 12px;
   --r-l: 14px;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  --sans: "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
   --tab-h: 58px;
-}
-:root[data-pal="teal"] {
-  --bg: #0e1418; --surface: #172127; --surface-2: #202d35; --line: #2a3a44;
-  --tx: #e7edf0; --tx-2: #93a3ad; --tx-3: #566670;
-  --accent: #2fd4c4; --accent-2: #7fe9de; --accent-deep: #12a99b;
-  --glow: rgba(47, 212, 196, .12);
-  --green: #35d6a0; --yellow: #f2c14e; --red: #f2695c;
-}
-:root[data-pal="amber"] {
-  --bg: #171614; --surface: #211f1b; --surface-2: #2b2822; --line: #37332b;
-  --tx: #eeebe4; --tx-2: #a59f92; --tx-3: #655f52;
-  --accent: #f0a93c; --accent-2: #f6c671; --accent-deep: #d6871c;
-  --glow: rgba(240, 169, 60, .12);
-  --green: #8fc46b; --yellow: #f0c24a; --red: #e8705a;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
