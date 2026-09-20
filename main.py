@@ -3,20 +3,16 @@
 TermuxYoutube — точка входа.
 
   python main.py            запустить TUI (основной режим)
-  python main.py web        web-UI на localhost (открой в браузере телефона)
-  python main.py kiwi       собрать расширение для Kiwi (cookies одним тапом)
-  python main.py cookies    взять cookies файлом-экспортом (если без расширения)
+  python main.py cookies    взять cookies файлом-экспортом
   python main.py check      жива ли сессия YouTube (один GET, без браузера)
   python main.py doctor     проверить зависимости: что стоит, чего не хватает
   python main.py grab URL   скачать без TUI (CLI-режим, для отладки)
 
-Входа «внутри приложения» нет намеренно: вход живёт в браузере телефона, откуда
-приезжают cookies. Ради своего браузера тут когда-то стоял слой на proot +
-Debian + ARM-Chromium (~2 ГБ) — он не давал ничего, кроме веса.
+Cookies приезжают файлом-экспортом из браузера телефона (python main.py cookies):
+состав My Mix определяется идентичностью сессии в этих cookies.
 """
 from __future__ import annotations
 
-import os
 import sys
 
 
@@ -80,64 +76,6 @@ def _cookies(args: list) -> int:
     return 0
 
 
-def _kiwi() -> int:
-    """
-    Собрать расширение для Kiwi в .zip — он ставит расширения именно так.
-
-    Расширение нужно потому, что главные cookies (SID, __Secure-*) помечены
-    httpOnly и из обычного скрипта на странице не видны вовсе; прочитать их
-    может только chrome.cookies. А базу браузера снаружи не открыть — каталог
-    приложения Android закрыт без root.
-    """
-    import zipfile
-    from pathlib import Path
-
-    import config
-    src = config.ROOT / "web" / "kiwi-extension"
-    if not src.is_dir():
-        print("!! нет папки web/kiwi-extension — обнови проект: git pull")
-        return 1
-
-    # Токен установки зашиваем в собранный .zip. Без него сервер откажет: проверки
-    # «origin = chrome-extension://» мало, она не отличает НАШЕ расширение от
-    # любого другого в том же браузере, а тут отдают доступ к аккаунту.
-    token = config.api_token()
-    if not token:
-        print("!! не смог создать .api-token — проверь права на папку проекта")
-        return 1
-
-    targets = [Path(os.path.expanduser(d)) for d in
-               ("/storage/emulated/0/Download", "~/storage/downloads")]
-    dest_dir = next((d for d in targets if d.is_dir()), config.ROOT)
-    dest = dest_dir / "termuxyoutube-kiwi.zip"
-
-    try:
-        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
-            for f in sorted(src.iterdir()):
-                if not f.is_file():
-                    continue
-                if f.name == "popup.js":
-                    body = f.read_text(encoding="utf-8")
-                    if "__TY_TOKEN__" not in body:
-                        print("!! в popup.js нет метки __TY_TOKEN__ — обнови проект")
-                        return 1
-                    z.writestr(f.name, body.replace("__TY_TOKEN__", token))
-                else:
-                    z.write(f, f.name)      # без вложенной папки: Kiwi ждёт manifest в корне
-    except OSError as ex:
-        print(f"!! не собралось: {ex}")
-        return 1
-
-    print(f"✓  Расширение собрано: {dest}")
-    print()
-    print("  В Kiwi: ⋮ → Extensions → включи «Developer mode» →")
-    print("  «+ (from .zip/.crx/.user.js)» → выбери этот файл.")
-    print()
-    print("  Дальше: запусти качалку (python main.py web), открой YouTube в Kiwi")
-    print("  и тапни иконку расширения — cookies уедут сами.")
-    return 0
-
-
 def main() -> int:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "tui"
 
@@ -151,15 +89,7 @@ def main() -> int:
     if cmd == "cookies":
         return _cookies(sys.argv[2:])
 
-    if cmd == "kiwi":
-        return _kiwi()
-
     _warn_stale_setup()
-
-    if cmd == "web":
-        from web.server import serve
-        no_open = "--no-open" in sys.argv
-        return serve(open_browser=not no_open)
 
     # refresh — прежнее имя той же команды, оставлено для мышечной памяти
     if cmd in ("check", "refresh"):
