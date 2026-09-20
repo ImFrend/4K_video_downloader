@@ -223,6 +223,9 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bord
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   font: 500 10.5px var(--sans); }
 .tab svg { width: 23px; height: 23px; }
+.tab .ic-fill { display: none; }                /* YouTube: контур — неактив, */
+.tab.on .ic-line { display: none; }             /* заливка — активная вкладка */
+.tab.on .ic-fill { display: block; }
 .tab.on { color: var(--tx); }
 /* «+» как в YouTube: тонкий плюс в лёгком сером круге, без заливки */
 .tab-add svg { width: 26px; height: 26px; color: var(--tx); box-sizing: content-box; padding: 6px;
