@@ -12,7 +12,6 @@ const api = async (path, body) => {
 const apiGet = async (p) => { try { return await (await fetch(p)).json(); } catch (_) { return null; } };
 
 let state = null, inited = false, sliderDrag = false;
-const cards = new Map();
 let libLimit = 25, libFilter = "recent", flatTracks = null;
 const libState = { list: [], detail: null, key: null };
 
@@ -181,71 +180,70 @@ function renumber() {
   E("detStat").textContent = `${rows.length} ${trkPlur(rows.length)} · ${fmtSize(bytes)}`;
 }
 
-// ═════════ ОЧЕРЕДЬ (SSE) ═════════
-const TRK_IC = { queued: "·", downloading: "▸", converting: "⟳", done: "✓", error: "✕", cancelled: "⊘" };
-function tintCard(el, ratio, status) {
-  if (status === "done") { el.style.borderColor = "var(--green)"; el.style.boxShadow = "0 0 0 .5px var(--green)"; }
-  else if (status === "error") { el.style.borderColor = "var(--red)"; el.style.boxShadow = "0 0 0 .5px var(--red)"; }
-  else if (status === "downloading") { el.style.borderColor = "var(--accent)"; el.style.boxShadow = "0 0 0 .5px var(--accent)"; }
-  else { el.style.borderColor = ""; el.style.boxShadow = ""; }
+// ═════════ ОЧЕРЕДЬ (SSE): секции миксов + потрековые строки ═════════
+// Статус трека → нейтральная подпись (без красного/зелёного) + доля прогресса.
+function trkStatus(t) {
+  switch (t.status) {
+    case "downloading": return { label: (t.percent ? Math.round(t.percent) + "%" : "скачивается") + (t.speed ? " · " + t.speed : ""), cls: "dl", ratio: (t.percent || 0) / 100 };
+    case "converting": return { label: "конвертация", cls: "dl", ratio: 1 };
+    case "done": return { label: "готово", cls: "done", ratio: 1 };
+    case "error": return { label: t.error || "ошибка", cls: "err", ratio: 0 };
+    case "cancelled": return { label: "отменён", cls: "canc", ratio: 0 };
+    default: return { label: "в ожидании", cls: "wait", ratio: 0 };
+  }
 }
-function makeCard(p) {
-  const li = document.createElement("li"); li.className = "card";
-  li.innerHTML = `<div class="thumb">♪</div><div class="card-body"><div class="card-title"></div><div class="card-sub"></div><div class="mini"><i></i></div></div><span class="card-status"></span><span class="chev">›</span><button class="rm" title="Убрать">✕</button>`;
-  const r = { thumb: li.querySelector(".thumb"), title: li.querySelector(".card-title"), sub: li.querySelector(".card-sub"),
-    mini: li.querySelector(".mini"), bar: li.querySelector(".mini > i"), status: li.querySelector(".card-status"), rm: li.querySelector(".rm") };
-  r.rm.addEventListener("click", (e) => { e.stopPropagation(); api("/api/remove", { id: p.id }); });
-  return { el: li, r };
+function mixCaption(p) {
+  if (p.status === "probing") return "анализирую ссылку…";
+  if (p.status === "downloading") return `${p.done} из ${p.total} · скачивается`;
+  if (p.status === "cancelling") return "останавливаю…";
+  if (p.status === "cleaning") return "очистка…";
+  if (p.status === "cancelled") return `отменён · ${p.done}/${p.total}`;
+  if (p.status === "error") return p.error || "ошибка";
+  if (p.status === "done") return `готово · ${p.total} ${trkPlur(p.total)}`;
+  return `${p.total} ${trkPlur(p.total)} · в очереди`;   // ready / queued
 }
-function updateCard(n, p) {
-  const r = n.r;
-  if (p.thumbnail) { setCover(r.thumb, p.thumbnail); } else r.thumb.textContent = "♪";
-  r.title.textContent = p.title || "Анализирую…";
-  let sub = "", st = "", cls = "card-status";
-  if (p.status === "probing") { sub = "анализирую ссылку…"; st = "⟳"; }
-  else if (p.status === "ready" || p.status === "queued") { sub = `${p.total} треков`; st = p.status === "queued" ? "в очереди" : ""; }
-  else if (p.status === "downloading") { sub = `${p.done} / ${p.total}`; st = "⟳"; }
-  else if (p.status === "done") { sub = `готово · ${p.total}`; st = "✓"; cls += " done"; }
-  else if (p.status === "cancelling") { sub = "останавливаю…"; st = "⟳"; }
-  else if (p.status === "cleaning") { sub = "очистка…"; st = "⟳"; }
-  else if (p.status === "cancelled") { sub = `отменён · ${p.done}/${p.total}`; st = "⊘"; }
-  else if (p.status === "error") { sub = p.error || "ошибка"; st = "✕"; cls += " err"; }
-  if (st === "⟳") cls += " spin";
-  r.sub.textContent = sub; r.status.textContent = st; r.status.className = cls;
-  const ratio = p.total ? p.done / p.total : 0;
-  const showBar = p.total > 0 && p.status !== "probing" && p.status !== "error";
-  r.mini.style.display = showBar ? "" : "none"; r.bar.style.transform = `scaleX(${ratio})`;
-  tintCard(n.el, ratio, p.status);
-  r.rm.style.display = state && state.running ? "none" : "";
+function makeMix(p) {
+  const li = document.createElement("li"); li.className = "qmix";
+  li.innerHTML = `<div class="qmix-h"><div class="qmix-info"><div class="qmix-title"></div><div class="qmix-cap"></div></div><button class="qmix-rm" title="Убрать">✕</button></div><ul class="qtracks"></ul>`;
+  const m = { el: li, title: li.querySelector(".qmix-title"), cap: li.querySelector(".qmix-cap"),
+    rm: li.querySelector(".qmix-rm"), tracksUl: li.querySelector(".qtracks"), rows: new Map() };
+  m.rm.addEventListener("click", (e) => { e.stopPropagation(); api("/api/remove", { id: p.id }); });
+  return m;
 }
+function makeQRow() {
+  const li = document.createElement("li"); li.className = "qtr";
+  li.innerHTML = `<div class="qtr-thumb">♪</div><div class="qtr-meta"><div class="qtr-title"></div><div class="qtr-status"></div><div class="qtr-bar"><i></i></div></div>`;
+  return { el: li, title: li.querySelector(".qtr-title"), status: li.querySelector(".qtr-status"),
+    bar: li.querySelector(".qtr-bar"), fill: li.querySelector(".qtr-bar > i") };
+}
+const qMixes = new Map();  // id -> { el, title, cap, rm, tracksUl, rows: Map(i -> row) }
 function renderQueue() {
   const ul = E("queue"); const pls = state.playlists || [];
   E("qEmpty").hidden = pls.length > 0;
   const seen = new Set();
   for (const p of pls) {
     seen.add(p.id);
-    let n = cards.get(p.id);
-    if (!n) { n = makeCard(p); cards.set(p.id, n); n.el.addEventListener("click", () => { if (p.total) openQueueDetail(p.id); }); ul.appendChild(n.el); }
-    updateCard(n, p);
+    let m = qMixes.get(p.id);
+    if (!m) { m = makeMix(p); qMixes.set(p.id, m); ul.appendChild(m.el); }
+    m.title.textContent = p.title || "Анализирую…";
+    m.cap.textContent = mixCaption(p);
+    m.rm.style.display = state && state.running ? "none" : "";
+    const seenT = new Set();
+    for (const t of (p.tracks || [])) {
+      seenT.add(t.i);
+      let row = m.rows.get(t.i);
+      if (!row) { row = makeQRow(); m.rows.set(t.i, row); m.tracksUl.appendChild(row.el); }
+      const s = trkStatus(t);
+      row.title.textContent = t.title || ("трек " + t.i);
+      row.status.textContent = s.label; row.status.className = "qtr-status " + s.cls;
+      const dl = t.status === "downloading" || t.status === "converting";
+      row.bar.style.display = dl ? "" : "none";
+      row.fill.style.transform = `scaleX(${s.ratio})`;
+      row.el.classList.toggle("qtr--off", t.status === "queued");
+    }
+    for (const [i, row] of m.rows) if (!seenT.has(i)) { row.el.remove(); m.rows.delete(i); }
   }
-  for (const [id, n] of cards) if (!seen.has(id)) { n.el.remove(); cards.delete(id); }
-}
-function openQueueDetail(id) {
-  const p = (state.playlists || []).find((x) => x.id === id); if (!p || !p.total) return;
-  // показываем как оверлей плейлиста, но данные из очереди (без удаления)
-  E("s-detail").hidden = false;
-  E("detTop").textContent = p.title || ""; E("detTitle").textContent = p.title || "";
-  E("detStat").textContent = `${p.done} / ${p.total}`;
-  const ul = E("detTracks"); ul.innerHTML = "";
-  for (const t of p.tracks) {
-    const li = document.createElement("li"); li.className = "tr";
-    const cov = document.createElement("div"); cov.className = "t169"; cov.textContent = "♪"; li.appendChild(cov);
-    const m = document.createElement("div"); m.className = "tr-meta";
-    const ti = document.createElement("div"); ti.className = "tr-title"; ti.textContent = t.title; m.appendChild(ti);
-    const inf = document.createElement("div"); inf.className = "tr-info";
-    inf.textContent = t.status === "downloading" ? `${t.percent}% · ${t.speed || ""}` : (t.status === "done" ? "готово" : t.status);
-    m.appendChild(inf); li.appendChild(m); ul.appendChild(li);
-  }
+  for (const [id, m] of qMixes) if (!seen.has(id)) { m.el.remove(); qMixes.delete(id); }
 }
 
 // go / cancel

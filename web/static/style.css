@@ -150,28 +150,31 @@ body.live .live-led { background: var(--green); box-shadow: 0 0 7px var(--green)
   opacity: 0; transition: opacity .25s; }
 .hint.show { opacity: 1; }
 .hint.err { color: var(--red); } .hint.warn { color: var(--yellow); }
-.queue { list-style: none; margin: 0; padding: 4px 14px 0; }
-.card { display: flex; align-items: center; gap: 13px; background: var(--surface);
-  border: 1px solid var(--line); border-radius: 13px; padding: 11px; margin-bottom: 10px;
-  cursor: pointer; transition: border-color .3s, box-shadow .3s, background .2s; }
-.card:active { background: var(--surface-2); }
-.thumb { width: 52px; height: 52px; border-radius: 9px; flex-shrink: 0; position: relative;
+/* очередь = секции миксов (заголовок + потрековые строки), как микс-очередь YouTube.
+   Статусы нейтральные: без красного/зелёного свечения, прогресс — тонкая серая линия. */
+.queue { list-style: none; margin: 0; padding: 6px 0 0; }
+.qmix { margin-bottom: 12px; }
+.qmix-h { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px 6px; }
+.qmix-info { flex: 1; min-width: 0; }
+.qmix-title { font: 700 17px var(--sans); letter-spacing: -.3px; line-height: 1.25;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.qmix-cap { font: 400 12.5px var(--sans); color: var(--tx-2); margin-top: 3px; }
+.qmix-rm { background: none; border: 0; color: var(--tx-3); font-size: 16px; padding: 4px 6px;
+  cursor: pointer; flex-shrink: 0; line-height: 1; }
+.qtracks { list-style: none; margin: 0; padding: 0; }
+.qtr { display: flex; align-items: center; gap: 12px; padding: 7px 14px; overflow: hidden; }
+.qtr-thumb { width: 78px; height: 44px; border-radius: 8px; flex-shrink: 0; position: relative;
   overflow: hidden; background: var(--surface-2); display: grid; place-items: center;
-  font: 500 20px var(--mono); color: var(--tx-3); }
-.card-body { flex: 1; min-width: 0; }
-.card-title { font: 600 15px var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-sub { font: 400 12px var(--mono); color: var(--tx-2); margin-top: 4px;
+  color: var(--tx-3); font: 500 16px var(--mono); }
+.qtr-meta { flex: 1; min-width: 0; }
+.qtr-title { font: 500 14px var(--sans); color: var(--tx); line-height: 1.3;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mini { position: relative; height: 5px; border-radius: 2px; background: #00000055; margin-top: 8px; overflow: hidden; }
-.mini > i { display: block; height: 100%; width: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+.qtr-status { font: 400 12px var(--mono); color: var(--tx-2); margin-top: 3px; }
+.qtr-status.done { color: var(--tx); }          /* готово — просто ярче, без зелёного */
+.qtr--off .qtr-title { color: var(--tx-2); }    /* в ожидании — приглушён */
+.qtr-bar { height: 2px; border-radius: 2px; background: var(--line); margin-top: 6px; overflow: hidden; }
+.qtr-bar > i { display: block; height: 100%; width: 100%; background: var(--tx-2);
   transform-origin: left; transform: scaleX(0); transition: transform .3s var(--ease); }
-.card-status { font: 600 12.5px var(--mono); color: var(--tx-2); flex-shrink: 0; }
-.card-status.done { color: var(--green); } .card-status.err { color: var(--red); }
-.card-status.spin { animation: spin 1.1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.chev { color: var(--tx-3); font-size: 20px; flex-shrink: 0; }
-.rm { background: none; border: 0; color: var(--tx-3); font-size: 15px; cursor: pointer; padding: 4px; flex-shrink: 0; }
 .foot { padding: 12px 14px 14px; }
 .go { width: 100%; border: 0; border-radius: 12px; padding: 15px; font: 700 15px var(--sans);
   color: #fff; background: linear-gradient(180deg, var(--accent), var(--accent-deep)); cursor: pointer; }
