@@ -12,7 +12,7 @@ const api = async (path, body) => {
 const apiGet = async (p) => { try { return await (await fetch(p)).json(); } catch (_) { return null; } };
 
 let state = null, inited = false, sliderDrag = false;
-let libLimit = 25, libFilter = "recent", flatTracks = null;
+let libLimit = 25, libFilter = "playlists", flatTracks = null;
 const libState = { list: [], detail: null, key: null };
 
 // ─────────── helpers ───────────
@@ -142,21 +142,9 @@ async function loadTracks() { const d = await apiGet("/api/tracks"); flatTracks 
 
 function renderLibrary() {
   const music = libFilter === "music";
-  E("histSec").hidden = music || libFilter === "playlists" || libState.list.length === 0;
   E("plList").hidden = music;
   E("trFlat").hidden = !music;
   E("libEmpty").hidden = libState.list.length > 0;
-
-  if (!E("histSec").hidden) {
-    const hs = E("histStrip"); hs.innerHTML = "";
-    libState.list.filter((p) => p.count > 0).slice(0, 10).forEach((p) => {
-      const c = document.createElement("div"); c.className = "hcard";
-      c.appendChild(t169(p.key, null, null));
-      const t = document.createElement("div"); t.className = "hc-title"; t.textContent = p.title;
-      const s = document.createElement("div"); s.className = "hc-sub"; s.textContent = `${p.count} ${trkPlur(p.count)}`;
-      c.append(t, s); c.addEventListener("click", () => openDetail(p.key)); hs.appendChild(c);
-    });
-  }
 
   if (music) { renderFlat(); return; }
   const ul = E("plList"); ul.innerHTML = "";
@@ -169,8 +157,7 @@ function renderLibrary() {
     m.append(t, s);
     const b = badge(p.status); if (b) { const el = document.createElement("span"); el.className = "badge " + b.c; el.textContent = b.t; m.appendChild(el); }
     li.appendChild(m);
-    const menu = document.createElement("button"); menu.className = "pl-menu"; menu.textContent = "⋮"; li.appendChild(menu);
-    li.addEventListener("click", () => openDetail(p.key));
+    li.addEventListener("click", () => openDetail(p.key));   // ⋮ убран (по правке пользователя)
     ul.appendChild(li);
   }
 }

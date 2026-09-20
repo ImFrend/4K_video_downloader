@@ -249,3 +249,16 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bord
 
 /* строка «уезжает» при свайпе — плавная уборка высоты */
 .swiped { overflow: hidden; }
+
+/* ══════════ ГЛАВНАЯ: идентичность (дизайн пользователя) ══════════ */
+.ytop-end { justify-content: flex-end; }
+.identity { display: flex; align-items: center; gap: 16px; padding: 10px 16px 12px; }
+.ava-big { width: 76px; height: 76px; border-radius: 50%; flex-shrink: 0; overflow: hidden;
+  background: linear-gradient(135deg, #2a2a2a, #111); display: grid; place-items: center; color: var(--tx-3); }
+.ava-big svg { width: 52px; height: 52px; fill: currentColor; }
+.id-name { font: 800 22px var(--sans); letter-spacing: -.4px; line-height: 1.15; color: var(--tx); }
+.id-handle { font: 400 13.5px var(--sans); color: var(--tx-2); margin-top: 3px; }
+.lib-title { font: 700 20px var(--sans); padding: 12px 16px 10px; color: var(--tx); }
+
+/* нижний бар: одиночные иконки по bar.json (активная — белая, неактивная — серая) */
+.tab svg { fill: currentColor; }
