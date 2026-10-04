@@ -124,6 +124,7 @@ class Job:
         self.pre_cancel: set[str] = set()           # треки, отменённые поштучно ДО старта
         self.limit: Optional[int] = None            # глубина снимка микса (из UI)
         self.auto_start = False                     # /api/grab: качать сразу после probe
+        self.title_hint: Optional[str] = None       # имя от приложения (список id сам имени не несёт)
 
 
 class JobManager:
@@ -234,7 +235,8 @@ class JobManager:
 
     # ---- очередь ----
     def add_url(self, url: str, limit: Optional[int] = None,
-                auto_start: bool = False) -> tuple[Optional[int], str]:
+                auto_start: bool = False,
+                title: Optional[str] = None) -> tuple[Optional[int], str]:
         url = (url or "").strip()
         # принимаем и ссылку, и вставленный список видео (снимок очереди с ПК)
         if not url.startswith("http") and not DownloadManager._parse_id_list(url):
@@ -249,6 +251,7 @@ class JobManager:
             job = Job(self._counter, url)
             job.limit = limit
             job.auto_start = auto_start
+            job.title_hint = (title or "").strip() or None
             self.jobs.append(job)
             self._bump()
         threading.Thread(target=self._probe, args=(job,), daemon=True).start()
@@ -263,7 +266,8 @@ class JobManager:
             pl = self.dm.probe(job.url, limit=job.limit)
             with self.lock:
                 job.tracks = pl.tracks
-                job.title = pl.title or (pl.tracks[0].title if pl.tracks else "Плейлист")
+                job.title = (job.title_hint or pl.title
+                             or (pl.tracks[0].title if pl.tracks else "Плейлист"))
                 job.thumbnail = pl.thumbnail
                 job.status = "ready"
                 self._bump()
@@ -737,8 +741,33 @@ class Handler(BaseHTTPRequestHandler):
                 lim = int(lim) if lim else None
             except (TypeError, ValueError):
                 lim = None
-            jid, msg = MANAGER.add_url(url, limit=lim, auto_start=True)
+            jid, msg = MANAGER.add_url(url, limit=lim, auto_start=True,
+                                       title=str(body.get("title") or ""))
             self._json({"ok": jid is not None, "id": jid, "msg": msg})
+        elif path == "/api/probe":
+            # для нативного app: снять треки микса → отдать JSON, чтобы app
+            # показал их своим списком и дал курировать перед скачиванием.
+            url = str(body.get("url") or "").strip()
+            cookies = body.get("cookies")
+            if cookies:
+                try:
+                    config.COOKIES_FILE.write_text(cookies, encoding="utf-8")
+                    config.mark_cookies_source("приложение (WebView)")
+                    MANAGER._refresh_cookie_status()
+                except OSError:
+                    pass
+            lim = body.get("limit")
+            try:
+                lim = int(lim) if lim else config.MIX_SNAPSHOT_LIMIT
+            except (TypeError, ValueError):
+                lim = config.MIX_SNAPSHOT_LIMIT
+            try:
+                pl = MANAGER.dm.probe(url, limit=lim)
+                tracks = [{"id": t.id, "title": t.title, "duration": t.duration}
+                          for t in pl.tracks]
+                self._json({"ok": True, "title": pl.title or "Микс", "tracks": tracks})
+            except Exception as ex:  # noqa: BLE001
+                self._json({"ok": False, "msg": _short(ex)})
         elif path == "/api/settings":
             MANAGER.set_settings(body)
             self._json({"ok": True})

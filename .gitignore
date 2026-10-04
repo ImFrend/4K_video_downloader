@@ -38,3 +38,8 @@ done.txt
 
 # сборка расширения для Kiwi
 termuxyoutube-kiwi.zip
+
+# распакованный APK YouTube (эталон, локально, не коммитим)
+youtube-apk/
+bar.json
+/*.html
