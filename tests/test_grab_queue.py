@@ -7,7 +7,9 @@
     python tests/test_grab_queue.py -v
 """
 import json
+import shutil
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -153,6 +155,52 @@ class ProbeEndpoint(unittest.TestCase):
     def test_limit_is_passed_through(self):
         self._probe({"url": "https://www.youtube.com/watch?v=x&list=RDx", "limit": 50})
         self.assertEqual(self.seen, [50])
+
+
+class AcceptCookies(unittest.TestCase):
+    """Рабочую сессию нельзя потерять из-за приложения, где не выполнен вход."""
+
+    AUTH = ("# Netscape HTTP Cookie File\n"
+            ".youtube.com\tTRUE\t/\tTRUE\t0\tSID\tvalue\n"
+            ".youtube.com\tTRUE\t/\tTRUE\t0\tPREF\tf1\n")
+    ANON = ("# Netscape HTTP Cookie File\n"
+            ".youtube.com\tTRUE\t/\tTRUE\t0\tVISITOR_INFO1_LIVE\tx\n"
+            ".youtube.com\tTRUE\t/\tTRUE\t0\tPREF\tf1\n")
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self._file, self._state = config.COOKIES_FILE, config.COOKIES_STATE_FILE
+        config.COOKIES_FILE = self.tmp / "cookies.txt"
+        config.COOKIES_STATE_FILE = self.tmp / ".cookies-state"
+
+    def tearDown(self):
+        config.COOKIES_FILE, config.COOKIES_STATE_FILE = self._file, self._state
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_anonymous_does_not_replace_a_signed_in_file(self):
+        config.COOKIES_FILE.write_text(self.AUTH)
+        server._accept_cookies(self.ANON)
+        self.assertEqual(config.COOKIES_FILE.read_text(), self.AUTH)
+
+    def test_signed_in_replaces_anything(self):
+        config.COOKIES_FILE.write_text(self.ANON)
+        server._accept_cookies(self.AUTH)
+        self.assertEqual(config.COOKIES_FILE.read_text(), self.AUTH)
+
+    def test_anonymous_is_written_when_there_was_no_session(self):
+        config.COOKIES_FILE.write_text(self.ANON.replace("VISITOR_INFO1_LIVE", "YSC"))
+        server._accept_cookies(self.ANON)
+        self.assertEqual(config.COOKIES_FILE.read_text(), self.ANON)
+
+    def test_first_cookies_are_written(self):
+        server._accept_cookies(self.ANON)
+        self.assertEqual(config.COOKIES_FILE.read_text(), self.ANON)
+
+    def test_nothing_sent_nothing_written(self):
+        config.COOKIES_FILE.write_text(self.AUTH)
+        for empty in (None, ""):
+            server._accept_cookies(empty)
+        self.assertEqual(config.COOKIES_FILE.read_text(), self.AUTH)
 
 
 if __name__ == "__main__":

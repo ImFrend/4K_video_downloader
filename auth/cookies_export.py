@@ -33,6 +33,21 @@ NETSCAPE_HEADER = (
 AUTH_MARKERS = {"SID", "SAPISID", "__Secure-1PSID", "__Secure-3PSID", "__Secure-1PSIDTS"}
 
 
+def netscape_has_auth_text(text: str) -> bool:
+    """То же, что [netscape_has_auth], но для ещё не сохранённого файла."""
+    names = set()
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if line.startswith(HTTPONLY_PREFIX):
+            line = line[len(HTTPONLY_PREFIX):]
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 6:
+            names.add(parts[5])
+    return bool(AUTH_MARKERS & names)
+
+
 def netscape_has_auth(path: Path) -> bool:
     """
     Есть ли в готовом cookies.txt маркеры входа.
@@ -48,20 +63,9 @@ def netscape_has_auth(path: Path) -> bool:
     префиксом — рабочий файл отвергался с «нет маркеров входа».
     """
     try:
-        txt = path.read_text(encoding="utf-8", errors="replace")
+        return netscape_has_auth_text(path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, ValueError):
         return False
-    names = set()
-    for line in txt.splitlines():
-        line = line.strip()
-        if line.startswith(HTTPONLY_PREFIX):
-            line = line[len(HTTPONLY_PREFIX):]
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split("\t")
-        if len(parts) >= 6:
-            names.add(parts[5])
-    return bool(AUTH_MARKERS & names)
 
 
 def netscape_to_cookies(path: Path) -> List[dict]:

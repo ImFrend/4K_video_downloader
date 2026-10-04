@@ -33,6 +33,7 @@ from core import library
 from core.downloader import (DownloadManager, Track, _cleanup_partials,
                              _media_scan, _reap_orphans, _safe)
 from auth.cookies_export import (cookies_to_netscape, netscape_has_auth,
+                                  netscape_has_auth_text,
                                  validate_netscape)
 from auth.refresh import ensure_fresh_cookies, probe_session
 from auth.refresh import status as cookie_status
@@ -529,6 +530,27 @@ class JobManager:
 MANAGER = JobManager()
 
 
+def _accept_cookies(cookies: Optional[str]) -> None:
+    """Принять cookies от приложения — но не ценой рабочей сессии.
+
+    Приложение шлёт то, что лежит в его WebView. Если там выхода нет, приходят
+    анонимные cookies, и записать их поверх файла с входом значит молча потерять
+    доступ к аккаунту: микс станет случайным, приватное перестанет качаться, а
+    вернуть сессию можно только новым экспортом из браузера. Поэтому файл с
+    маркерами входа анонимной присылкой не перезаписываем.
+    """
+    if not cookies:
+        return
+    if not netscape_has_auth_text(cookies) and netscape_has_auth(config.COOKIES_FILE):
+        return
+    try:
+        config.COOKIES_FILE.write_text(cookies, encoding="utf-8")
+        config.mark_cookies_source("приложение (WebView)")
+        MANAGER._refresh_cookie_status()
+    except OSError:
+        pass
+
+
 # ──────────────────────────── HTTP ────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     server_version = "TermuxYoutube"
@@ -740,14 +762,7 @@ class Handler(BaseHTTPRequestHandler):
             # приём от нашего нативного app: текущий URL из YouTube-WebView + свежие
             # cookies (CookieManager). Пишем cookies, добавляем и качаем сразу.
             url = str(body.get("url") or "").strip()
-            cookies = body.get("cookies")
-            if cookies:
-                try:
-                    config.COOKIES_FILE.write_text(cookies, encoding="utf-8")
-                    config.mark_cookies_source("приложение (WebView)")
-                    MANAGER._refresh_cookie_status()
-                except OSError:
-                    pass
+            _accept_cookies(body.get("cookies"))
             lim = body.get("limit")
             try:
                 lim = int(lim) if lim else None
@@ -760,14 +775,7 @@ class Handler(BaseHTTPRequestHandler):
             # для нативного app: снять треки микса → отдать JSON, чтобы app
             # показал их своим списком и дал курировать перед скачиванием.
             url = str(body.get("url") or "").strip()
-            cookies = body.get("cookies")
-            if cookies:
-                try:
-                    config.COOKIES_FILE.write_text(cookies, encoding="utf-8")
-                    config.mark_cookies_source("приложение (WebView)")
-                    MANAGER._refresh_cookie_status()
-                except OSError:
-                    pass
+            _accept_cookies(body.get("cookies"))
             # глубину шлют только для радио-микса; без неё probe() сам возьмёт
             # дефолт для микса, а обычный плейлист отдаст целиком
             lim = body.get("limit")
