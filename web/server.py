@@ -107,6 +107,9 @@ def _cover_file(folder: Path, file: Optional[str]) -> Optional[Path]:
 
 
 # ──────────────────────────── модель очереди ────────────────────────────
+_FINISHED = ("done", "cancelled", "error")   # джоб отработал, в очереди только для вида
+
+
 class Job:
     """Одна карточка плейлиста в очереди."""
 
@@ -242,10 +245,12 @@ class JobManager:
         if not url.startswith("http") and not DownloadManager._parse_id_list(url):
             return None, "это не ссылка и не список видео"
         with self.lock:
-            active = [j for j in self.jobs if j.status != "error"]
-            if len(active) >= config.WEB_MAX_PLAYLISTS:
+            # отработавшие джобы очередь не занимают и повторной добавке не мешают:
+            # у приложения нет экрана очереди, чтобы их оттуда убирать
+            live = [j for j in self.jobs if j.status not in _FINISHED]
+            if len(live) >= config.WEB_MAX_PLAYLISTS:
                 return None, f"очередь полна (макс {config.WEB_MAX_PLAYLISTS})"
-            if any(j.url == url for j in self.jobs):
+            if any(j.url == url for j in live):
                 return None, "уже в очереди"
             self._counter += 1
             job = Job(self._counter, url)
@@ -398,11 +403,18 @@ class JobManager:
             threads.append(t)
         for t in threads:
             t.join()
+        self._finish_run()
 
+    def _finish_run(self) -> None:
+        """Очередь отработала. Заодно подхватываем то, что /api/grab прислал
+        посреди загрузки: start() тогда отказал, и джоб остался в «ready»."""
         with self.lock:
             self.running = False
             self._refresh_cookie_status()
             self._bump()
+            waiting = any(j.auto_start and j.status == "ready" for j in self.jobs)
+        if waiting:
+            self.start()
 
     def _run_one(self, job: Job, sem: threading.Semaphore, tracks_per: int) -> None:
         job.dm = DownloadManager()             # свой на джоб → отмена не заденет соседей
