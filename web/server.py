@@ -768,11 +768,13 @@ class Handler(BaseHTTPRequestHandler):
                     MANAGER._refresh_cookie_status()
                 except OSError:
                     pass
+            # глубину шлют только для радио-микса; без неё probe() сам возьмёт
+            # дефолт для микса, а обычный плейлист отдаст целиком
             lim = body.get("limit")
             try:
-                lim = int(lim) if lim else config.MIX_SNAPSHOT_LIMIT
+                lim = int(lim) if lim else None
             except (TypeError, ValueError):
-                lim = config.MIX_SNAPSHOT_LIMIT
+                lim = None
             try:
                 pl = MANAGER.dm.probe(url, limit=lim)
                 tracks = [{"id": t.id, "title": t.title, "duration": t.duration}

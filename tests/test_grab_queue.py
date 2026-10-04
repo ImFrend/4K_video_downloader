@@ -6,9 +6,13 @@
 
     python tests/test_grab_queue.py -v
 """
+import json
 import sys
+import threading
 import time
 import unittest
+import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -109,6 +113,46 @@ class GrabWhileDownloading(unittest.TestCase):
         mgr.running = True
         mgr._finish_run()
         self.assertEqual(started, [])
+
+
+class ProbeEndpoint(unittest.TestCase):
+    """/api/probe через настоящий HTTP-обработчик: какую глубину получает разбор."""
+
+    def setUp(self):
+        self.seen = []
+        outer = self
+
+        class Recorder:
+            def probe(self, url, limit=None):
+                outer.seen.append(limit)
+                return Playlist(tracks=[Track(title="T", url="u", id="id1", duration=61)],
+                                title="PL")
+
+        self._dm = server.MANAGER.dm
+        server.MANAGER.dm = Recorder()
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        server.MANAGER.dm = self._dm
+
+    def _probe(self, body):      # как приложение: JSON без Origin и без cookies
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.httpd.server_address[1]}/api/probe",
+            data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        return json.load(urllib.request.urlopen(req, timeout=10))
+
+    def test_no_limit_means_whole_playlist(self):
+        r = self._probe({"url": "https://www.youtube.com/playlist?list=PLx"})
+        self.assertEqual(self.seen, [None])      # не 25: плейлист нельзя обрезать молча
+        self.assertEqual(r, {"ok": True, "title": "PL",
+                             "tracks": [{"id": "id1", "title": "T", "duration": 61}]})
+
+    def test_limit_is_passed_through(self):
+        self._probe({"url": "https://www.youtube.com/watch?v=x&list=RDx", "limit": 50})
+        self.assertEqual(self.seen, [50])
 
 
 if __name__ == "__main__":
