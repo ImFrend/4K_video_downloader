@@ -123,6 +123,7 @@ class Job:
         self.cancel_requested = False
         self.pre_cancel: set[str] = set()           # треки, отменённые поштучно ДО старта
         self.limit: Optional[int] = None            # глубина снимка микса (из UI)
+        self.auto_start = False                     # /api/grab: качать сразу после probe
 
 
 class JobManager:
@@ -232,7 +233,8 @@ class JobManager:
             self._bump()
 
     # ---- очередь ----
-    def add_url(self, url: str, limit: Optional[int] = None) -> tuple[Optional[int], str]:
+    def add_url(self, url: str, limit: Optional[int] = None,
+                auto_start: bool = False) -> tuple[Optional[int], str]:
         url = (url or "").strip()
         # принимаем и ссылку, и вставленный список видео (снимок очереди с ПК)
         if not url.startswith("http") and not DownloadManager._parse_id_list(url):
@@ -246,6 +248,7 @@ class JobManager:
             self._counter += 1
             job = Job(self._counter, url)
             job.limit = limit
+            job.auto_start = auto_start
             self.jobs.append(job)
             self._bump()
         threading.Thread(target=self._probe, args=(job,), daemon=True).start()
@@ -264,6 +267,8 @@ class JobManager:
                 job.thumbnail = pl.thumbnail
                 job.status = "ready"
                 self._bump()
+            if job.auto_start:          # /api/grab: скачать сразу, без кнопки
+                self.start()
         except Exception as ex:  # noqa: BLE001
             with self.lock:
                 job.status, job.error = "error", _short(ex)
@@ -714,6 +719,25 @@ class Handler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 lim = None
             jid, msg = MANAGER.add_url(body.get("url", ""), limit=lim)
+            self._json({"ok": jid is not None, "id": jid, "msg": msg})
+        elif path == "/api/grab":
+            # приём от нашего нативного app: текущий URL из YouTube-WebView + свежие
+            # cookies (CookieManager). Пишем cookies, добавляем и качаем сразу.
+            url = str(body.get("url") or "").strip()
+            cookies = body.get("cookies")
+            if cookies:
+                try:
+                    config.COOKIES_FILE.write_text(cookies, encoding="utf-8")
+                    config.mark_cookies_source("приложение (WebView)")
+                    MANAGER._refresh_cookie_status()
+                except OSError:
+                    pass
+            lim = body.get("limit")
+            try:
+                lim = int(lim) if lim else None
+            except (TypeError, ValueError):
+                lim = None
+            jid, msg = MANAGER.add_url(url, limit=lim, auto_start=True)
             self._json({"ok": jid is not None, "id": jid, "msg": msg})
         elif path == "/api/settings":
             MANAGER.set_settings(body)
