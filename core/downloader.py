@@ -17,8 +17,10 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import os
 import random
+import shutil
 import re
 import subprocess
 import tempfile
@@ -33,6 +35,7 @@ from typing import Callable, Optional
 import yt_dlp
 
 import config
+from core import tagging
 
 
 # ──────────────────────────── модели ────────────────────────────
@@ -348,6 +351,14 @@ class DownloadManager:
             name = "%(title)s.%(ext)s"
         outtmpl = str(folder / name)
 
+        # Без ffmpeg (единый APK: тащить его туда — десятки мегабайт) постобработку
+        # делаем сами: аудио и так приходит готовым AAC, а теги с обложкой пишет
+        # mutagen. Там, где ffmpeg есть, поведение не меняется.
+        if not has_ffmpeg():
+            self._download_without_ffmpeg(track, dl_url, hook, outtmpl, folder,
+                                          album, track_total, on_progress)
+            return
+
         opts = self._base_opts() | {
             "format": config.AUDIO_FORMAT,
             "outtmpl": outtmpl,
@@ -407,6 +418,54 @@ class DownloadManager:
             track.status, track.error = "cancelled", "отменено"
             # подмести хвосты именно этого трека (по префиксу «NN - »), не задев
             # соседей, что качаются параллельно в той же папке
+            _cleanup_track_partials(folder, track.playlist_index)
+            on_progress(track)
+        except Exception as ex:  # noqa: BLE001
+            track.status, track.error = "error", _short_err(ex)
+            on_progress(track)
+
+    def _download_without_ffmpeg(self, track: Track, dl_url: str, hook, outtmpl: str,
+                                 folder: Path, album: Optional[str],
+                                 track_total: Optional[int],
+                                 on_progress: ProgressCb) -> None:
+        """Тот же трек, но без единого шага ffmpeg.
+
+        Берём только поток m4a: он уже AAC, перекодировать нечего. Теги и
+        обложку (отдельным jpg, минуя webp) проставляет mutagen. Если тегов не
+        вышло — трек всё равно считается скачанным: аудио важнее косметики.
+        """
+        opts = self._base_opts() | {
+            "format": "bestaudio[ext=m4a]/bestaudio",
+            "outtmpl": outtmpl,
+            "progress_hooks": [hook],
+            "postprocessors": [],
+        }
+        try:
+            with self._ydl(opts) as ydl:
+                res = ydl.extract_info(dl_url, download=True)
+            track.filepath = _final_path(res)
+            if isinstance(res, dict):
+                track.duration = track.duration or res.get("duration")
+            if track.filepath and track.filepath.endswith(".m4a"):
+                cover = tagging.fetch_thumbnail(track.id) if (config.SAVE_THUMBNAILS and track.id) else None
+                tagging.tag_m4a(
+                    Path(track.filepath),
+                    title=(res.get("title") or track.title) if isinstance(res, dict) else track.title,
+                    artist=(res.get("uploader") or "") if isinstance(res, dict) else "",
+                    album=album or "",
+                    track=track.playlist_index,
+                    track_total=track_total,
+                    cover=cover,
+                )
+            track.status = "done"
+            track.percent = 100.0
+            _media_scan(track.filepath)
+            if config.SKIP_DUPLICATES and track.id:
+                with self._archive_lock:
+                    _append_done_id(folder, track.id)
+            on_progress(track)
+        except yt_dlp.utils.DownloadCancelled:
+            track.status, track.error = "cancelled", "отменено"
             _cleanup_track_partials(folder, track.playlist_index)
             on_progress(track)
         except Exception as ex:  # noqa: BLE001
@@ -684,6 +743,12 @@ def _media_scan_dir(folder: Path) -> None:
                        capture_output=True, timeout=60)
     except (FileNotFoundError, OSError, subprocess.SubprocessError):
         pass
+
+
+@functools.lru_cache(maxsize=1)
+def has_ffmpeg() -> bool:
+    """Есть ли ffmpeg в системе. В едином APK его не будет — и это штатный режим."""
+    return shutil.which("ffmpeg") is not None
 
 
 def _safe(name: str) -> str:
